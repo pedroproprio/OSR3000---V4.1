@@ -306,48 +306,78 @@ void altitude_update_gps(const float z_meas_alt, const float z_meas_vel) {
 float acc_mahalanobis(const float an) {
     static float window[100];
     static float sum = 0.0f;
+    static float sum_sq = 0.0f;
     static uint8_t index = 0;
     static uint8_t count = 0;
-    
-    sum -= window[index];
-    window[index] = an;
-    sum += an;
 
-    index++;
-    if (index >= 100) index = 0;
-    if (count < 100) count++;
+    if (count < 100) {
+        sum -= window[index];
+        sum_sq -= window[index]*window[index];
+        window[index] = an;
+        sum += an;
+        sum_sq += an*an;
+        index++;
+        if (index >= 100) index = 0;
+        count++;
+        return an;
+    }
 
-    float mean = sum/count;
-    float d2 = powf((an-mean), 2.0f)/cfg.accel_var;
-    if (d2 > 3.84) {
+    float mean = sum/100;
+    float var = (sum_sq/100) - (mean*mean);
+    const float alpha = 0.8f; // considering good quality
+    float d2 = powf((an-mean), 2.0f)/alpha*cfg.accel_var + (1-alpha)*var;
+    if (d2 > 3.84) { // 95% confidence interval
         ESP_LOGW("MAHA", "acc value rejected");
         uint8_t last_valid = (index == 0) ? (100-1) : (index-1);
         return window[last_valid]; 
     }
+
+    sum -= window[index];
+    sum_sq -= window[index]*window[index];
+    window[index] = an;
+    sum += an;
+    sum_sq += an*an;
+    index++;
+    if (index >= 100) index = 0;
     return an;
 }
 
 float bar_mahalanobis(const float alt) {
     static float window[100];
     static float sum = 0.0f;
+    static float sum_sq = 0.0f;
     static uint8_t index = 0;
     static uint8_t count = 0;
-    
-    sum -= window[index];
-    window[index] = alt;
-    sum += alt;
 
-    index++;
-    if (index >= 100) index = 0;
-    if (count < 100) count++;
+    if (count < 100) {
+        sum -= window[index];
+        sum_sq -= window[index]*window[index];
+        window[index] = alt;
+        sum += alt;
+        sum_sq += alt*alt;
+        index++;
+        if (index >= 100) index = 0;
+        count++;
+        return alt;
+    }
 
-    float mean = sum/count;
-    float d2 = powf((alt-mean), 2.0f)/cfg.bar_var;
-    if (d2 > 3.84) {
+    float mean = sum/100;
+    float var = (sum_sq/100) - (mean*mean);
+    const float alpha = 0.8f; // considering good quality
+    float d2 = powf((alt-mean), 2.0f)/alpha*cfg.accel_var + (1-alpha)*var;
+    if (d2 > 3.84) { // 95% confidence interval
         ESP_LOGW("MAHA", "acc value rejected");
         uint8_t last_valid = (index == 0) ? (100-1) : (index-1);
-        return window[last_valid];
+        return window[last_valid]; 
     }
+
+    sum -= window[index];
+    sum_sq -= window[index]*window[index];
+    window[index] = alt;
+    sum += alt;
+    sum_sq += alt*alt;
+    index++;
+    if (index >= 100) index = 0;
     return alt;
 }
 

@@ -2,13 +2,13 @@ dependencies:
   esp_type_utils:
     dependencies: []
     source:
-      path: C:\Users\pedro\OneDrive\Documentos\ESP-IDF\OSR3000 V4.1\components\esp_type_utils
+      path: C:\Users\pedro\Documentos\esp-idf\OSR3000---V4.1\components\esp_type_utils
       type: local
     version: 1.2.7
   idf:
     source:
       type: idf
-    version: 5.4.0
+    version: 5.5.1
 direct_dependencies:
 - idf
 - k0i05/esp_type_utils
