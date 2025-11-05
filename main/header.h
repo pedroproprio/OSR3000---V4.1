@@ -86,7 +86,7 @@
 #define MAX_USED 0.8 // Maximum percentage of flash to be used by littlefs
 #define FILENAME_LENGTH 32
 
-#define BMP390_I2C_ADDRESS (0x77)
+#define BMP390_I2C_ADDRESS (0x76)
 
 #define FUSION_SAMPLE_RATE 100
 
@@ -199,13 +199,13 @@ extern altitude_config_t kf_config;
 
 esp_err_t icm_init(void);
 esp_err_t bmp_init(void);
-void fusion_task(void *pvParameters);
-void bmp_task(void *pvParameters);
+void fusion_task(data_t *data, FusionOffset* offset, FusionAhrs* ahrs, icm20948_agmt_t* agmt);
+void bmp_task(data_t *data);
 float get_altitude_from_pressure(const float pressure);
 float get_sea_pressure(const float pressure);
 float bmp_get_initial_alt(const float alt);
 float gps_get_initial_alt(const float alt);
-void gps_task(void *pvParameters);
+void gps_task(data_t *data, uint8_t buffer[GPS_BUFF_SIZE]);
 bool ubx_parse(uint8_t *buffer, int len, data_t *data);
 void ubx_calculate_checksum(uint8_t *buffer, uint16_t length, uint8_t *ck_a, uint8_t *ck_b);
 

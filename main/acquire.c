@@ -122,17 +122,40 @@ void task_acquire(void *pvParameters)
     xI2CMutex = xSemaphoreCreateMutex();
     data_t data = {0};
 
-    xTaskCreate(gps_task, "GPS", configMINIMAL_STACK_SIZE * 4, &data, 6, NULL);
-
     // ADC Initialization
     adc_oneshot_unit_handle_t adc_unit_handle;
     adc_cali_handle_t adc_cali_handle;
     adc_init(&adc_unit_handle, &adc_cali_handle);
 
+    uart_config.baud_rate = GPS_BAUDRATE;
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, GPS_BUFF_SIZE, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+    uint8_t buffer[GPS_BUFF_SIZE];
+
     ESP_ERROR_CHECK(bmp_init());
-    xTaskCreate(bmp_task, "BMP", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL);
     ESP_ERROR_CHECK(icm_init());
-    xTaskCreatePinnedToCore(fusion_task, "ICM", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL, 1);
+
+    // Initialise algorithms
+	FusionOffset offset;
+	FusionAhrs ahrs;
+
+	FusionOffsetInitialise(&offset, FUSION_SAMPLE_RATE);
+	FusionAhrsInitialise(&ahrs);
+
+	// Set AHRS algorithm settings
+    const FusionAhrsSettings settings = {
+        .convention = FusionConventionNed,
+        .gain = 0.5f,
+        .gyroscopeRange = 500.0f, /* replace this with actual gyroscope range in degrees/s */
+        .accelerationRejection = 10.0f,
+        .magneticRejection = 10.0f,
+        .recoveryTriggerPeriod = 5 * FUSION_SAMPLE_RATE, /* 5 seconds */
+	};
+	FusionAhrsSetSettings(&ahrs, &settings);
+    icm20948_agmt_t agmt;
+    TickType_t xLastWakeTime = 0;
+    const TickType_t xFrequency = pdMS_TO_TICKS(1000/FUSION_SAMPLE_RATE);
 
     while (true)
     {
@@ -148,6 +171,12 @@ void task_acquire(void *pvParameters)
 
         // Battery voltage
         data.voltage = read_battery_voltage(adc_unit_handle, adc_cali_handle);
+
+        gps_task(&data, buffer);
+        bmp_task(&data);
+        xLastWakeTime = xTaskGetTickCount();
+        xTaskDelayUntil(&xLastWakeTime, xFrequency);
+        fusion_task(&data, &offset, &ahrs, &agmt);
 
         status_checks(&data);
 

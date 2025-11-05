@@ -224,9 +224,11 @@ void app_main(void)
     xStatusMutex = xSemaphoreCreateMutex();
     // Create Queues
     static const int alt_queue_size = 10;
+    static const int sd_queue_size = 5;
     static const int littlefs_queue_size = 5;
     static const int lora_queue_size = 5;
     xAltQueue = xQueueCreate(alt_queue_size, sizeof(float));
+    xSDQueue = xQueueCreate(sd_queue_size, sizeof(data_t));
     xLittleFSQueue = xQueueCreate(littlefs_queue_size, sizeof(data_t));
     xLoraQueue = xQueueCreate(lora_queue_size, sizeof(data_t));
 
