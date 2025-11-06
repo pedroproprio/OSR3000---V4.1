@@ -2,37 +2,47 @@
 
 static const char *TAG = "GPS";
 
-void gps_task(data_t *data, uint8_t buffer[GPS_BUFF_SIZE])
+void gps_task(void *pvParameters)
 {
-    int len = uart_read_bytes(UART_NUM_1, buffer, GPS_BUFF_SIZE - 1, pdMS_TO_TICKS(20));
-    if (len == -1)
-    {
-        ESP_LOGE(TAG, "UART read failed");
-        return;
-    }
-    if (len == 0)
-    {
-        ESP_LOGI(TAG, "UART is empty");
-        return;
-    }
-    buffer[len] = '\0';
-    char *line = strtok((char *)buffer, "\r\n");
-    while (line != NULL) {
-        if (strstr(line, "$GPGGA")) {
-            struct minmea_sentence_gga gga;
-            if (minmea_parse_gga(&gga, line)) { // call gga parser
-                if(utc_time == 1) utc_time = gga.time.hours*1e4+gga.time.minutes*1e2+gga.time.seconds;
-                data->latitude = minmea_tocoord(&gga.latitude);
-                data->longitude = minmea_tocoord(&gga.longitude);
-                data->gps_altitude = gga.altitude.value;
-                if (gps_initial_alt == 0) gps_initial_alt = gps_get_initial_alt(gga.altitude.value);
+    data_t *data = (data_t *)pvParameters;
+
+    uart_config.baud_rate = GPS_BAUDRATE;
+    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config));
+    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, GPS_BUFF_SIZE, 0, 0, NULL, 0));
+    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+
+    uint8_t buffer[GPS_BUFF_SIZE];
+
+    while (true) {
+        int len = uart_read_bytes(UART_NUM_1, buffer, GPS_BUFF_SIZE - 1, pdMS_TO_TICKS(20));
+        if (len > 0) {
+            buffer[len] = '\0';
+            char *line = strtok((char *)buffer, "\r\n");
+            while (line != NULL) {
+                if (strstr(line, "$GPGGA")) {
+                    struct minmea_sentence_gga gga;
+                    if (minmea_parse_gga(&gga, line)) { // call gga parser
+                        if(utc_time == 1) utc_time = gga.time.hours*1e4+gga.time.minutes*1e2+gga.time.seconds;
+                        xSemaphoreTake(xDataMutex, portMAX_DELAY);
+                        data->latitude = minmea_tocoord(&gga.latitude);
+                        data->longitude = minmea_tocoord(&gga.longitude);
+                        data->gps_altitude = gga.altitude.value;
+                        xSemaphoreGive(xDataMutex);
+                        if (gps_initial_alt == 0) gps_initial_alt = gps_get_initial_alt(gga.altitude.value);
+                    }
+                }
+                line = strtok(NULL, "\r\n");
             }
-        }
-        line = strtok(NULL, "\r\n");
+            ubx_parse(buffer, len, data);
+            if (STATUS & ARMED)
+                altitude_update_gps(data->gps_altitude, data->gps_vel_vertical);
+        } else if (len < 0)
+            ESP_LOGW(TAG, "UART read failed");
+        else
+            ESP_LOGW(TAG, "UART is empty");
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
-    ubx_parse(buffer, len, data);
-    if (STATUS & ARMED)
-        altitude_update_gps(data->gps_altitude, data->gps_vel_vertical);
+    vTaskDelete(NULL);
 }
 
 bool ubx_parse(uint8_t *buffer, int len, data_t *data)
@@ -61,7 +71,9 @@ bool ubx_parse(uint8_t *buffer, int len, data_t *data)
             ubx_calculate_checksum(&buffer[i+2], 4+length, &calc_a, &calc_b);
 
             if (calc_a == ck_a && calc_b == ck_b) {
+                xSemaphoreTake(xDataMutex, portMAX_DELAY);
                 data->gps_vel_vertical = velD;
+                xSemaphoreGive(xDataMutex);
                 return true; // UBX valid
             }
         }

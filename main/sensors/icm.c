@@ -13,18 +13,19 @@ static icm20948_device_t icm_dev;
 
 esp_err_t icm_init(void)
 {
-    i2c_master_dev_handle_t dev_handle = NULL;
-
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus_handle, &dev_cfg, &dev_handle));
-
+    icm20948_device_t icm_dev;
     icm0948_config_i2c_t icm_config = {
-        .i2c_dev = dev_handle,
-        .i2c_addr = dev_cfg.device_address};
+        .bus_handle = bus_handle,
+        .dev_handle = NULL,
+        .i2c_addr = ICM20948_I2C_ADDRESS,
+        .i2c_clock_speed = I2C_SPEED,
+    };
 
     bool icm_initialized = true;
+
     /* setup icm20948 device */
     icm20948_init_i2c(&icm_dev, &icm_config);
-
+    
     /* check ID */
     while (icm20948_check_id(&icm_dev) != ICM_20948_STAT_OK)
     {
@@ -90,18 +91,23 @@ esp_err_t icm_init(void)
     myDLPcfg.a = ACC_D111BW4_N136BW;
     myDLPcfg.g = GYR_D119BW5_B154BW3;
     stat = icm20948_set_dlpf_cfg(&icm_dev, sensors, myDLPcfg);
-    if (stat != ESP_OK) ESP_LOGE(TAG_ICM, "set DLPF failed");
+    if (stat != ESP_OK)
+        ESP_LOGE(TAG_ICM, "set DLPF failed");
     
     // Choose whether or not to use DLPF
     stat = icm20948_enable_dlpf(&icm_dev, ICM_20948_INTERNAL_ACC, true);
-    if (stat != ESP_OK) ESP_LOGE(TAG_ICM, "accel DLPF failed");
+    if (stat != ESP_OK)
+        ESP_LOGE(TAG_ICM, "accel DLPF failed");
     stat = icm20948_enable_dlpf(&icm_dev, ICM_20948_INTERNAL_GYR, true);
-    if (stat != ESP_OK) ESP_LOGE(TAG_ICM, "gyro DLPF failed");
+    if (stat != ESP_OK)
+        ESP_LOGE(TAG_ICM, "gyro DLPF failed");
     
     stat = icm20948_init_magnetometer(&icm_dev);
-    if (stat != ESP_OK) ESP_LOGE(TAG_ICM, "mag init failed");
+    if (stat != ESP_OK)
+        ESP_LOGE(TAG_ICM, "mag init failed");
 
-    if (icm_initialized) return ESP_OK;
+    if (icm_initialized)
+        return ESP_OK;
     return ESP_FAIL;
 }
 
@@ -115,8 +121,14 @@ esp_err_t icm_init(void)
 // 	);
 // }
 
-void fusion_task(data_t *data, FusionOffset *offset, FusionAhrs *ahrs, icm20948_agmt_t* agmt)
-{ 
+void fusion_task(void *pvParameters)
+{
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    const TickType_t xFrequency = pdMS_TO_TICKS(1000/FUSION_SAMPLE_RATE);
+
+    data_t *data = (data_t *)pvParameters;
+    icm20948_device_t *icm = &icm_dev;
+    
 	// Define calibration (replace with actual calibration data if available)
 	static const FusionMatrix gyroscopeMisalignment = {{{(1.0f), (0.0f), (0.0f)}, {(0.0f), (1.0f), (0.0f)}, {(0.0f), (0.0f), (1.0f)}}};
 	static const FusionVector gyroscopeSensitivity = {{1.0f, 1.0f, 1.0f}};
@@ -131,55 +143,91 @@ void fusion_task(data_t *data, FusionOffset *offset, FusionAhrs *ahrs, icm20948_
                                                  {0.0f, 0.0f, 1.0f}}};
     static const FusionVector hardIronOffset = {{0.0f, 0.0f, 0.0f}};
     
-    xSemaphoreTake(xI2CMutex, portMAX_DELAY);
-    if (icm20948_get_agmt(&icm_dev, agmt) != ICM_20948_STAT_OK)
-    {
-        ESP_LOGE(TAG_FUSION, "get agmt failed");
-        return;
-    }
+	// Initialise algorithms
+	FusionOffset offset;
+	FusionAhrs ahrs;
 
-    xSemaphoreGive(xI2CMutex);
-    // Update raw sensor data
-    data->accel_x = agmt->acc.axes.x;
-    data->accel_x = agmt->acc.axes.x;
-    data->accel_x = agmt->acc.axes.x;
-    
-    data->gyro_x = agmt->gyr.axes.x;
-    data->gyro_x = agmt->gyr.axes.x;
-    data->gyro_x = agmt->gyr.axes.x;
-    
-    data->mag_x = agmt->mag.axes.x;
-    data->mag_x = agmt->mag.axes.x;
-    data->mag_x = agmt->mag.axes.x;
-    data->temperature = agmt->tmp.val;
-    if(initial_temp == 0) initial_temp = (agmt->tmp.val*temp_scale + temp_offset) + 273;
-	// Acquire latest sensor data
-    const clock_t timestamp = esp_timer_get_time(); // replace this with actual gyroscope timestamp
-    FusionVector gyroscope = {{agmt->gyr.axes.x*gyro_scale, agmt->gyr.axes.y*gyro_scale, agmt->gyr.axes.z*gyro_scale}}; // in degrees/s
-    FusionVector accelerometer = {{agmt->acc.axes.x*acc_scale, agmt->acc.axes.y*acc_scale, agmt->acc.axes.z*acc_scale}}; // in g
-    FusionVector magnetometer = {{agmt->mag.axes.x*mag_scale, agmt->mag.axes.y*mag_scale, agmt->mag.axes.z*mag_scale}}; // in arbitrary units
-    // Apply calibration
-    gyroscope = FusionCalibrationInertial(gyroscope, gyroscopeMisalignment, gyroscopeSensitivity, gyroscopeOffset);
-    accelerometer = FusionCalibrationInertial(accelerometer, accelerometerMisalignment, accelerometerSensitivity, accelerometerOffset);
-    magnetometer = FusionCalibrationMagnetic(magnetometer, softIronMatrix, hardIronOffset);
-    // Update gyroscope offset correction algorithm
-    gyroscope = FusionOffsetUpdate(offset, gyroscope);
-    // Calculate delta time (in seconds) to account for gyroscope sample clock error
-    static clock_t previousTimestamp;
-    const float deltaTime = (float) (timestamp - previousTimestamp) / (float) CLOCKS_PER_SEC;
-    previousTimestamp = timestamp;
-    // Update gyroscope AHRS algorithm
-    FusionAhrsUpdate(ahrs, gyroscope, accelerometer, magnetometer, deltaTime);
-    const FusionVector a = FusionAhrsGetLinearAcceleration(ahrs);
-    float accel = sqrt(powf(a.axis.x, 2) + powf(a.axis.y, 2) + powf(a.axis.z, 2));
-    data->accel = (int8_t)floor(accel*100);
-    const FusionQuaternion q = FusionAhrsGetQuaternion(ahrs);
-    data->orientation_q1 = q.element.z;
-    data->orientation_q2 = q.element.w;
-    data->orientation_q3 = q.element.x;
-    data->orientation_q4 = q.element.y;
-    const FusionVector g = FusionAhrsGetEarthAcceleration(ahrs);
-    float acc = acc_mahalanobis(-g.axis.z);
-    if (STATUS & ARMED) altitude_predict(acc);
-    // print_agmt(agmt);
+	FusionOffsetInitialise(&offset, FUSION_SAMPLE_RATE);
+	FusionAhrsInitialise(&ahrs);
+
+	// Set AHRS algorithm settings
+	const FusionAhrsSettings settings = {
+        .convention = FusionConventionNed,
+        .gain = 0.5f,
+        .gyroscopeRange = 500.0f, /* replace this with actual gyroscope range in degrees/s */
+        .accelerationRejection = 10.0f,
+        .magneticRejection = 10.0f,
+        .recoveryTriggerPeriod = 5 * FUSION_SAMPLE_RATE, /* 5 seconds */
+	};
+	FusionAhrsSetSettings(&ahrs, &settings);
+    while(true)
+	{
+        xTaskDelayUntil(&xLastWakeTime, xFrequency);
+        xSemaphoreTake(xI2CMutex, portMAX_DELAY);
+        icm20948_agmt_t agmt;
+		if (icm20948_get_agmt(icm, &agmt) == ICM_20948_STAT_OK) {
+            xSemaphoreGive(xI2CMutex);
+            if(initial_temp == 0)
+                initial_temp = (agmt.tmp.val*temp_scale + temp_offset) + 273;
+
+			// Acquire latest sensor data
+            const clock_t timestamp = esp_timer_get_time();
+            FusionVector gyroscope = {{agmt.gyr.axes.x*gyro_scale, agmt.gyr.axes.y*gyro_scale, agmt.gyr.axes.z*gyro_scale}}; // in degrees/s
+            FusionVector accelerometer = {{agmt.acc.axes.x*acc_scale, agmt.acc.axes.y*acc_scale, agmt.acc.axes.z*acc_scale}}; // in g
+            FusionVector magnetometer = {{agmt.mag.axes.x*mag_scale, agmt.mag.axes.y*mag_scale, agmt.mag.axes.z*mag_scale}}; // in arbitrary units
+
+            // Apply calibration
+            gyroscope = FusionCalibrationInertial(gyroscope, gyroscopeMisalignment, gyroscopeSensitivity, gyroscopeOffset);
+            accelerometer = FusionCalibrationInertial(accelerometer, accelerometerMisalignment, accelerometerSensitivity, accelerometerOffset);
+            magnetometer = FusionCalibrationMagnetic(magnetometer, softIronMatrix, hardIronOffset);
+
+            // Update gyroscope offset correction algorithm
+            gyroscope = FusionOffsetUpdate(&offset, gyroscope);
+
+            // Calculate delta time (in seconds) to account for gyroscope sample clock error
+            static clock_t previousTimestamp;
+            const float deltaTime = (float) (timestamp - previousTimestamp) / (float) CLOCKS_PER_SEC;
+            previousTimestamp = timestamp;
+
+            // Update gyroscope AHRS algorithm
+            FusionAhrsUpdate(&ahrs, gyroscope, accelerometer, magnetometer, deltaTime);
+
+            const FusionVector a = FusionAhrsGetLinearAcceleration(&ahrs);
+            float accel = sqrt(powf(a.axis.x, 2) + powf(a.axis.y, 2) + powf(a.axis.z, 2));
+            
+            const FusionQuaternion q = FusionAhrsGetQuaternion(&ahrs);
+            
+            xSemaphoreTake(xDataMutex, portMAX_DELAY);
+            data->accel = (uint8_t)floor(accel*100);
+            data->orientation_q1 = q.element.z;
+            data->orientation_q2 = q.element.w;
+            data->orientation_q3 = q.element.x;
+            data->orientation_q4 = q.element.y;
+
+            // Update raw sensor data
+            data->accel_x = agmt.acc.axes.x;
+            data->accel_x = agmt.acc.axes.x;
+            data->accel_x = agmt.acc.axes.x;
+            
+            data->gyro_x = agmt.gyr.axes.x;
+            data->gyro_x = agmt.gyr.axes.x;
+            data->gyro_x = agmt.gyr.axes.x;
+            
+            data->mag_x = agmt.mag.axes.x;
+            data->mag_x = agmt.mag.axes.x;
+            data->mag_x = agmt.mag.axes.x;
+
+            data->temperature = agmt.tmp.val;
+            xSemaphoreGive(xDataMutex);
+
+            const FusionVector g = FusionAhrsGetEarthAcceleration(&ahrs);
+            float acc = acc_mahalanobis(-g.axis.z);
+            if (STATUS & ARMED)
+                altitude_predict(acc);
+            // print_agmt(agmt);
+		} else {
+			ESP_LOGE(TAG_FUSION, "get agmt failed");
+		}
+    }
+    vTaskDelete(NULL);
 }

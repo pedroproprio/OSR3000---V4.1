@@ -43,8 +43,8 @@
 
 #define DROGUE_THRESHOLD 10
 #define MAIN_ALTITUDE 450
-#define KNOWN_PRESSURE 0 // pascal, given by local weather station
-#define KNOWN_ALTITUDE 0 // m, given by local weather station
+#define KNOWN_PRESSURE 94000 // pascal, given by local weather station
+#define KNOWN_ALTITUDE 600 // m, launch zone altitude
 
 #define BUZZER_GPIO GPIO_NUM_38
 #define LED_GPIO GPIO_NUM_15
@@ -66,7 +66,7 @@
 #define I2C_SDA_IO GPIO_NUM_8
 #define I2C_SCL_IO GPIO_NUM_9
 
-#define I2C_SPEED 40000
+#define I2C_SPEED 100000 // 100kHz
 
 #define GPS_BAUDRATE 115200
 #define LORA_BAUDRATE 115200
@@ -86,7 +86,8 @@
 #define MAX_USED 0.8 // Maximum percentage of flash to be used by littlefs
 #define FILENAME_LENGTH 32
 
-#define BMP390_I2C_ADDRESS (0x76)
+#define BMP390_I2C_ADDRESS (0x77)
+#define ICM20948_I2C_ADDRESS (0x68)
 
 #define FUSION_SAMPLE_RATE 100
 
@@ -186,32 +187,31 @@ extern QueueHandle_t xLoraQueue;
 extern SemaphoreHandle_t xGPSMutex;
 extern SemaphoreHandle_t xStatusMutex;
 extern SemaphoreHandle_t xI2CMutex;
+extern SemaphoreHandle_t xDataMutex;
 
 // Status
 extern uint16_t STATUS;
 
 extern i2c_master_bus_handle_t bus_handle;
 extern i2c_master_bus_config_t bus_config;
-extern i2c_device_config_t dev_cfg;
-extern i2c_device_config_t bmp_config;
 extern uart_config_t uart_config;
 extern altitude_config_t kf_config;
 
 esp_err_t icm_init(void);
 esp_err_t bmp_init(void);
-void fusion_task(data_t *data, FusionOffset* offset, FusionAhrs* ahrs, icm20948_agmt_t* agmt);
-void bmp_task(data_t *data);
+void fusion_task(void *pvParameters);
+void bmp_task(void *pvParameters);
 float get_altitude_from_pressure(const float pressure);
 float get_sea_pressure(const float pressure);
 float bmp_get_initial_alt(const float alt);
 float gps_get_initial_alt(const float alt);
-void gps_task(data_t *data, uint8_t buffer[GPS_BUFF_SIZE]);
+void gps_task(void *pvParameters);
 bool ubx_parse(uint8_t *buffer, int len, data_t *data);
 void ubx_calculate_checksum(uint8_t *buffer, uint16_t length, uint8_t *ck_a, uint8_t *ck_b);
 
-void init_adc(adc_oneshot_unit_handle_t *adc_handle, adc_cali_handle_t *cali_handle);
-void acquire_voltage(data_t *data, adc_oneshot_unit_handle_t *adc_handle, adc_cali_handle_t *cali_handle);
-void status_checks(data_t *data);
+uint16_t read_battery_voltage(adc_oneshot_unit_handle_t adc_unit_handle, adc_cali_handle_t adc_cali_handle);
+void adc_init(adc_oneshot_unit_handle_t *adc_unit_handle, adc_cali_handle_t *adc_cali_handle);
+void status_checks(const data_t *data);
 void send_queues(data_t *data);
 void task_acquire(void *pvParameters);
 void task_sd(void *pvParameters);

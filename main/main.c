@@ -48,7 +48,7 @@ void task_deploy(void *pvParameters)
             {
                 gpio_set_level(LED_GPIO, HIGH);
                 gpio_set_level(BUZZER_GPIO, HIGH);
-                vTaskDelay(pdMS_TO_TICKS(50));
+                vTaskDelay(pdMS_TO_TICKS(150));
                 gpio_set_level(LED_GPIO, LOW);
                 gpio_set_level(BUZZER_GPIO, LOW);
                 vTaskDelay(pdMS_TO_TICKS(950));
@@ -140,10 +140,10 @@ static void setup_peripherals(void)
     {
         gpio_set_level(LED_GPIO, HIGH);
         gpio_set_level(BUZZER_GPIO, HIGH);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(150));
         gpio_set_level(LED_GPIO, LOW);
         gpio_set_level(BUZZER_GPIO, HIGH);
-        vTaskDelay(pdMS_TO_TICKS(50));
+        vTaskDelay(pdMS_TO_TICKS(150));
     }
     ESP_LOGI("Buzzer LED", "Initialized");
 }
@@ -215,20 +215,19 @@ static void manage_nvs_counters(bool format_mode, file_counter_t *sd_counter, fi
 
 void app_main(void)
 {
-    setup_peripherals();
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_config, &bus_handle));
+    setup_peripherals();
 
     bool format_mode = check_for_format_mode();
 
     // Create Mutexes
     xStatusMutex = xSemaphoreCreateMutex();
+    xDataMutex = xSemaphoreCreateMutex();
     // Create Queues
     static const int alt_queue_size = 10;
-    static const int sd_queue_size = 5;
     static const int littlefs_queue_size = 5;
     static const int lora_queue_size = 5;
     xAltQueue = xQueueCreate(alt_queue_size, sizeof(float));
-    xSDQueue = xQueueCreate(sd_queue_size, sizeof(data_t));
     xLittleFSQueue = xQueueCreate(littlefs_queue_size, sizeof(data_t));
     xLoraQueue = xQueueCreate(lora_queue_size, sizeof(data_t));
 

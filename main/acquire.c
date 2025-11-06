@@ -26,7 +26,7 @@ void adc_init(adc_oneshot_unit_handle_t *adc_unit_handle, adc_cali_handle_t *adc
     ESP_ERROR_CHECK(adc_cali_create_scheme_curve_fitting(&cali_config, adc_cali_handle));
 }
 
-float read_battery_voltage(adc_oneshot_unit_handle_t adc_unit_handle, adc_cali_handle_t adc_cali_handle) {
+uint16_t read_battery_voltage(adc_oneshot_unit_handle_t adc_unit_handle, adc_cali_handle_t adc_cali_handle) {
     int raw;
     ESP_ERROR_CHECK(adc_oneshot_read(adc_unit_handle, ADC_CHANNEL_4, &raw));
 
@@ -34,12 +34,12 @@ float read_battery_voltage(adc_oneshot_unit_handle_t adc_unit_handle, adc_cali_h
     ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc_cali_handle, raw, &voltage_mv));
 
     // Calculate actual battery voltage based on voltage divider ratio
-    float battery_voltage = (voltage_mv / 1000.0f) * ((R1 + R2) / R2); // Convert mV to V and apply divider ratio
+    uint16_t battery_voltage = (uint16_t)floor((voltage_mv * 0.1f * (R1 + R2) / R2)); //  Apply divider ratio, save as V * 100
     // (R1 + R2) / R2 = 1.5 for R1=10k and R2=20k
     return battery_voltage;
 }
 
-void status_checks(data_t *data)
+void status_checks(const data_t *data)
 {
     // Check if accel is higher than FLYING_THRESHOLD
     if (!(data->status & FLYING))
@@ -107,9 +107,11 @@ void send_queues(data_t *data)
     static int n = 0;
     if (n++ % 10 == 0) // This affects the frequency of the LoRa messages
     {
-        data_t send_data;
+        xSemaphoreTake(xDataMutex, portMAX_DELAY);
         data->kf_altitude = altitude_get_alt();
         data->kf_vel_vertical = altitude_get_vel();
+        xSemaphoreGive(xDataMutex);
+        data_t send_data;
         send_struct(data, &send_data);
         xQueueSend(xLoraQueue, &send_data, 0); // Send to LoRa queue
     }
@@ -126,36 +128,12 @@ void task_acquire(void *pvParameters)
     adc_oneshot_unit_handle_t adc_unit_handle;
     adc_cali_handle_t adc_cali_handle;
     adc_init(&adc_unit_handle, &adc_cali_handle);
-
-    uart_config.baud_rate = GPS_BAUDRATE;
-    ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config));
-    ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, GPS_BUFF_SIZE, 0, 0, NULL, 0));
-    ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
-    uint8_t buffer[GPS_BUFF_SIZE];
-
+    
     ESP_ERROR_CHECK(bmp_init());
     ESP_ERROR_CHECK(icm_init());
-
-    // Initialise algorithms
-	FusionOffset offset;
-	FusionAhrs ahrs;
-
-	FusionOffsetInitialise(&offset, FUSION_SAMPLE_RATE);
-	FusionAhrsInitialise(&ahrs);
-
-	// Set AHRS algorithm settings
-    const FusionAhrsSettings settings = {
-        .convention = FusionConventionNed,
-        .gain = 0.5f,
-        .gyroscopeRange = 500.0f, /* replace this with actual gyroscope range in degrees/s */
-        .accelerationRejection = 10.0f,
-        .magneticRejection = 10.0f,
-        .recoveryTriggerPeriod = 5 * FUSION_SAMPLE_RATE, /* 5 seconds */
-	};
-	FusionAhrsSetSettings(&ahrs, &settings);
-    icm20948_agmt_t agmt;
-    TickType_t xLastWakeTime = 0;
-    const TickType_t xFrequency = pdMS_TO_TICKS(1000/FUSION_SAMPLE_RATE);
+    xTaskCreate(gps_task, "GPS", configMINIMAL_STACK_SIZE * 4, &data, 6, NULL);
+    xTaskCreate(bmp_task, "BMP", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL);
+    xTaskCreatePinnedToCore(fusion_task, "ICM", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL, 1);
 
     while (true)
     {
@@ -172,12 +150,6 @@ void task_acquire(void *pvParameters)
         // Battery voltage
         data.voltage = read_battery_voltage(adc_unit_handle, adc_cali_handle);
 
-        gps_task(&data, buffer);
-        bmp_task(&data);
-        xLastWakeTime = xTaskGetTickCount();
-        xTaskDelayUntil(&xLastWakeTime, xFrequency);
-        fusion_task(&data, &offset, &ahrs, &agmt);
-
         status_checks(&data);
 
         // Print data
@@ -187,7 +159,7 @@ void task_acquire(void *pvParameters)
                           "\tGyro\t\tX: %d, Y: %d, Z: %d\r\n"
                           "\tMag\t\tX: %d, Y: %d, Z: %d\r\n"
                           "\tGPS\t\tLat: %.5f, Lon: %.5f, Alt: %.2f, DVel: %.2f\r\n"
-                          "\tTotal Accel\t\tG: %d\r\n"
+                          "\tAccelT\t\tG: %d\r\n"
                           "\tOrientation\t\tQ1: %.5f, Q2: %.5f, Q3: %.5f, Q4: %.5f\r\n"
                           "\tKalman\t\talt: %.2f, DVel: %.2f\n"
                           "----------------------------------------",
