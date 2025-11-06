@@ -206,16 +206,16 @@ void fusion_task(void *pvParameters)
 
             // Update raw sensor data
             data->accel_x = agmt.acc.axes.x;
-            data->accel_x = agmt.acc.axes.x;
-            data->accel_x = agmt.acc.axes.x;
+            data->accel_y = agmt.acc.axes.y;
+            data->accel_z = agmt.acc.axes.z;
             
             data->gyro_x = agmt.gyr.axes.x;
-            data->gyro_x = agmt.gyr.axes.x;
-            data->gyro_x = agmt.gyr.axes.x;
+            data->gyro_y = agmt.gyr.axes.y;
+            data->gyro_z = agmt.gyr.axes.z;
             
             data->mag_x = agmt.mag.axes.x;
-            data->mag_x = agmt.mag.axes.x;
-            data->mag_x = agmt.mag.axes.x;
+            data->mag_y = agmt.mag.axes.y;
+            data->mag_z = agmt.mag.axes.z;
 
             data->temperature = agmt.tmp.val;
             xSemaphoreGive(xDataMutex);

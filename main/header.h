@@ -43,8 +43,8 @@
 
 #define DROGUE_THRESHOLD 10
 #define MAIN_ALTITUDE 450
-#define KNOWN_PRESSURE 94000 // pascal, given by local weather station
-#define KNOWN_ALTITUDE 600 // m, launch zone altitude
+#define KNOWN_PRESSURE 101400 // pascal, given by local weather station
+#define KNOWN_ALTITUDE 510 // m, launch zone altitude
 
 #define BUZZER_GPIO GPIO_NUM_38
 #define LED_GPIO GPIO_NUM_15

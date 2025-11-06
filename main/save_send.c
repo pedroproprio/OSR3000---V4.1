@@ -312,12 +312,13 @@ static bool lora_send_data_blocking(const data_t *p)
         int w = uart_write_bytes(UART_NUM_2, (const char *)(buf + written), total - written);
         if (w > 0) {
             written += w;
+            attempt = 0;
             //ESP_LOGD(TAG_LORA, "uart_write_bytes wrote %d/%d", written, total);
         } else {
             ESP_LOGW(TAG_LORA, "uart_write_bytes returned %d, retrying...", w);
+            attempt++;
             vTaskDelay(pdMS_TO_TICKS(50));
         }
-        attempt++;
     }
 
     if (written != total) {
@@ -392,18 +393,19 @@ void task_lora(void *pvParameters)
     {
         while (xQueueReceive(xLoraQueue, &data, portMAX_DELAY) == pdTRUE)
         {
+            // Clear any stale semaphore state
+            xSemaphoreTake(xLoraAuxSem, 0);
             // Wait for AUX HIGH before transmission
-            uint32_t start = esp_log_timestamp();
-            while (gpio_get_level(LORA_AUX) == 0) {
-                vTaskDelay(pdMS_TO_TICKS(1));
-                if ((esp_log_timestamp() - start) > CONFIG_E220_AUX_TIMEOUT_MS) {
+            if (gpio_get_level(LORA_AUX) == 0) {
+                // Wait for ISR to signal AUX rising edge
+                if (xSemaphoreTake(xLoraAuxSem, pdMS_TO_TICKS(CONFIG_E220_AUX_TIMEOUT_MS)) != pdTRUE) {
                     ESP_LOGW(TAG_LORA, "Timeout waiting for AUX before TX");
-                    break;
+                    continue; // Skip this transmission
                 }
             }
 
             bool ok = lora_send_data_blocking(&data); 
-            if (ok == false) { 
+            if (!ok) { 
                 ESP_LOGE(TAG_LORA, "Failed to send LoRa packet — discarded"); 
             }
             // Wait for ISR to signal that AUX went HIGH again (finished TX)
