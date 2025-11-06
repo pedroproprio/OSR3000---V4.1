@@ -17,7 +17,7 @@ void task_deploy(void *pvParameters)
     float start_altitude = 0;
 
     xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
-    start_altitude = current_altitude;
+    start_altitude = abs(current_altitude);
 
     bool drogue_caindo = false;
     bool main_caindo = false;
@@ -65,12 +65,7 @@ void task_deploy(void *pvParameters)
 
         if (drogue_caindo)
         {
-            gpio_set_level(DROGUE_GPIO, HIGH);
-            ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
-            vTaskDelay(pdMS_TO_TICKS(500));
-            gpio_set_level(DROGUE_GPIO, LOW);
-
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 20; i++)
             {
                 xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
                 if (!(current_altitude < max_altitude - DROGUE_THRESHOLD))
@@ -82,7 +77,11 @@ void task_deploy(void *pvParameters)
 
             if (!drogue_caindo)
                 return;
-            
+
+            gpio_set_level(DROGUE_GPIO, HIGH);
+            ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
+            vTaskDelay(pdMS_TO_TICKS(500));
+            gpio_set_level(DROGUE_GPIO, LOW);
             xSemaphoreTake(xStatusMutex, portMAX_DELAY);
             STATUS |= DROGUE_DEPLOYED;
             xSemaphoreGive(xStatusMutex);
@@ -90,12 +89,7 @@ void task_deploy(void *pvParameters)
 
         else if (main_caindo)
         {
-            gpio_set_level(MAIN_GPIO, HIGH);
-            ESP_LOGW(TAG_DEPLOY, "Main deployed");
-            vTaskDelay(pdMS_TO_TICKS(500));
-            gpio_set_level(MAIN_GPIO, LOW);
-
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 20; i++)
             {
                 xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
                 if (!(current_altitude < start_altitude + MAIN_ALTITUDE))
@@ -108,7 +102,10 @@ void task_deploy(void *pvParameters)
             if (!main_caindo)
                 return;
             
-            
+            gpio_set_level(MAIN_GPIO, HIGH);
+            ESP_LOGW(TAG_DEPLOY, "Main deployed");
+            vTaskDelay(pdMS_TO_TICKS(500));
+            gpio_set_level(MAIN_GPIO, LOW);
             xSemaphoreTake(xStatusMutex, portMAX_DELAY);
             STATUS |= MAIN_DEPLOYED;
             xSemaphoreGive(xStatusMutex);

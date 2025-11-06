@@ -11,5 +11,8 @@
 },
 "idf.flashType": "UART",
 "idf.portWin": "COM5",
-"idf.port": "/dev/ttyACM0"
+"idf.port": "/dev/ttyACM0",
+"files.associations": {
+  "sdmmc_cmd.h": "c"
+}
 }
