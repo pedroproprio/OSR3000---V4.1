@@ -19,8 +19,8 @@ void task_deploy(void *pvParameters)
     xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
     start_altitude = current_altitude;
 
-    bool acionar_drogue = false;
-    bool acionar_main = false;
+    bool drogue_caindo = false;
+    bool main_caindo = false;
     uint32_t local_status;
 
     while (true)
@@ -60,28 +60,55 @@ void task_deploy(void *pvParameters)
         // Update max altitude
         if (current_altitude > max_altitude) max_altitude = current_altitude;
 
-        acionar_drogue = !(local_status & DROGUE_DEPLOYED) && (current_altitude < max_altitude - DROGUE_THRESHOLD);
-        acionar_main = (local_status & DROGUE_DEPLOYED) && !(local_status & MAIN_DEPLOYED) && (current_altitude < start_altitude + MAIN_ALTITUDE);
+        drogue_caindo = !(local_status & DROGUE_DEPLOYED) && (current_altitude < max_altitude - DROGUE_THRESHOLD);
+        main_caindo = (local_status & DROGUE_DEPLOYED) && !(local_status & MAIN_DEPLOYED) && (current_altitude < start_altitude + MAIN_ALTITUDE);
 
-        if (acionar_drogue)
+        if (drogue_caindo)
         {
             gpio_set_level(DROGUE_GPIO, HIGH);
             ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
             vTaskDelay(pdMS_TO_TICKS(500));
             gpio_set_level(DROGUE_GPIO, LOW);
 
+            for (int i = 0; i < 3; i++)
+            {
+                xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
+                if (!(current_altitude < max_altitude - DROGUE_THRESHOLD))
+                {
+                    drogue_caindo = false;
+                    break;
+                }
+            }
+
+            if (!drogue_caindo)
+                return;
+            
             xSemaphoreTake(xStatusMutex, portMAX_DELAY);
             STATUS |= DROGUE_DEPLOYED;
             xSemaphoreGive(xStatusMutex);
         }
 
-        else if (acionar_main)
+        else if (main_caindo)
         {
             gpio_set_level(MAIN_GPIO, HIGH);
             ESP_LOGW(TAG_DEPLOY, "Main deployed");
             vTaskDelay(pdMS_TO_TICKS(500));
             gpio_set_level(MAIN_GPIO, LOW);
 
+            for (int i = 0; i < 3; i++)
+            {
+                xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
+                if (!(current_altitude < start_altitude + MAIN_ALTITUDE))
+                {
+                    main_caindo = false;
+                    break;
+                }
+            }
+            
+            if (!main_caindo)
+                return;
+            
+            
             xSemaphoreTake(xStatusMutex, portMAX_DELAY);
             STATUS |= MAIN_DEPLOYED;
             xSemaphoreGive(xStatusMutex);
