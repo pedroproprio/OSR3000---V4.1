@@ -41,10 +41,10 @@
 #include "esp_vfs_fat.h"
 #include "esp_littlefs.h"
 
-#define DROGUE_THRESHOLD 10
+#define DROGUE_THRESHOLD 1
 #define MAIN_ALTITUDE 450
-#define KNOWN_PRESSURE 0 // pascal, given by local weather station
-#define KNOWN_ALTITUDE 0 // m, given by local weather station
+#define KNOWN_PRESSURE 101400 // pascal, given by local weather station
+#define KNOWN_ALTITUDE 510 // m, given by local weather station
 
 #define BUZZER_GPIO GPIO_NUM_38
 #define LED_GPIO GPIO_NUM_15
@@ -86,7 +86,7 @@
 #define MAX_USED 0.8 // Maximum percentage of flash to be used by littlefs
 #define FILENAME_LENGTH 32
 
-#define BMP390_I2C_ADDRESS (0x76)
+#define BMP390_I2C_ADDRESS (0x77)
 
 #define FUSION_SAMPLE_RATE 100
 

@@ -223,10 +223,10 @@ void app_main(void)
     // Create Mutexes
     xStatusMutex = xSemaphoreCreateMutex();
     // Create Queues
-    static const int alt_queue_size = 10;
-    static const int sd_queue_size = 5;
-    static const int littlefs_queue_size = 5;
-    static const int lora_queue_size = 5;
+    static const int alt_queue_size = 30;
+    static const int sd_queue_size = 10;
+    static const int littlefs_queue_size = 10;
+    static const int lora_queue_size = 15;
     xAltQueue = xQueueCreate(alt_queue_size, sizeof(float));
     xSDQueue = xQueueCreate(sd_queue_size, sizeof(data_t));
     xLittleFSQueue = xQueueCreate(littlefs_queue_size, sizeof(data_t));
@@ -250,6 +250,7 @@ void app_main(void)
         xSemaphoreTake(xStatusMutex, portMAX_DELAY);
         STATUS |= SAFE_MODE;
         xSemaphoreGive(xStatusMutex);
+        ESP_LOGE("MAIN", "SAFE MODE");
     }
 
     // Start tasks

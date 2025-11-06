@@ -176,7 +176,7 @@ void task_acquire(void *pvParameters)
         bmp_task(&data);
         xLastWakeTime = xTaskGetTickCount();
         xTaskDelayUntil(&xLastWakeTime, xFrequency);
-        fusion_task(&data, &offset, &ahrs, &agmt);
+        //fusion_task(&data, &offset, &ahrs, &agmt);
 
         status_checks(&data);
 
