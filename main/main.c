@@ -63,9 +63,36 @@ void task_deploy(void *pvParameters)
         drogue_caindo = !(local_status & DROGUE_DEPLOYED) && (current_altitude < max_altitude - DROGUE_THRESHOLD);
         main_caindo = (local_status & DROGUE_DEPLOYED) && !(local_status & MAIN_DEPLOYED) && (current_altitude < start_altitude + MAIN_ALTITUDE);
 
+        /*if (drogue_caindo)
+        {
+            gpio_set_level(DROGUE_GPIO, HIGH);
+            ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
+            vTaskDelay(pdMS_TO_TICKS(500));
+            gpio_set_level(DROGUE_GPIO, LOW);
+
+            xSemaphoreTake(xStatusMutex, portMAX_DELAY);
+            STATUS |= DROGUE_DEPLOYED;
+            xSemaphoreGive(xStatusMutex);
+        }
+
+        else if (main_caindo)
+        {
+            gpio_set_level(MAIN_GPIO, HIGH);
+            ESP_LOGW(TAG_DEPLOY, "Main deployed");
+            vTaskDelay(pdMS_TO_TICKS(500));
+            gpio_set_level(MAIN_GPIO, LOW);
+
+            xSemaphoreTake(xStatusMutex, portMAX_DELAY);
+            STATUS |= MAIN_DEPLOYED;
+            xSemaphoreGive(xStatusMutex);
+
+            // Delete task
+            vTaskDelete(NULL);
+        }*/
+
         if (drogue_caindo)
         {
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 5; i++)
             {
                 xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
                 if (!(current_altitude < max_altitude - DROGUE_THRESHOLD))
@@ -89,7 +116,7 @@ void task_deploy(void *pvParameters)
 
         else if (main_caindo)
         {
-            for (int i = 0; i < 20; i++)
+            for (int i = 0; i < 5; i++)
             {
                 xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
                 if (!(current_altitude < start_altitude + MAIN_ALTITUDE))
@@ -269,7 +296,7 @@ void app_main(void)
     }
 
     // If RBF is off at startup, set SAFE_MODE
-    if (gpio_get_level(RBF_GPIO) == HIGH)
+    if (gpio_get_level(RBF_GPIO) == LOW)
     {
         xSemaphoreTake(xStatusMutex, portMAX_DELAY);
         STATUS |= SAFE_MODE;
@@ -297,7 +324,7 @@ void app_main(void)
         xSemaphoreGive(xStatusMutex);
         
         // If not armed, not in safe mode and RBF is off, arm the system
-        arm = !(local_status & ARMED) && !(local_status & SAFE_MODE) && gpio_get_level(RBF_GPIO) == LOW;
+        arm = !(local_status & ARMED) && !(local_status & SAFE_MODE) && (gpio_get_level(RBF_GPIO) == LOW);
         // If already armed, check disarm condition
         disarm = !arm && !(local_status & FLYING) && (gpio_get_level(RBF_GPIO) == HIGH);
 
