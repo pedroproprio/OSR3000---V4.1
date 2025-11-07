@@ -4,7 +4,7 @@ static const char *TAG = "BMP390";
 static bmp390_handle_t bmp_dev_hdl;
 
 static const float medium_lapse_rate =  -153.84615f; // (K/Km)^-1, L: average lapse rate
-static const float exponent = 0.1902665f; // R*L/g*M (R: universal gas constant,
+static const float exponent = 0.1902665f; // -R*L/g*M (R: universal gas constant,
                                           // g: gravitational acceleration,
                                           // M: dry air molar mass)
 
@@ -59,11 +59,8 @@ float get_altitude_from_pressure(const float pressure)
 {
     float alt;
     if (initial_temp == 0)
-        alt = (powf(pressure/sea_pressure, exponent)-1)*298*medium_lapse_rate; // fixed 25°C 
-    else
-        alt = (powf(pressure/sea_pressure, exponent)-1)*initial_temp*medium_lapse_rate;
-    if (sea_pressure == 0)
-        alt = (powf(pressure/101325, exponent)-1)*298*medium_lapse_rate;
+        alt = (powf(pressure/101325, exponent)-1)*298*medium_lapse_rate; // stantard sea pressure + fixed 25°C 
+    alt = (powf(pressure/sea_pressure, exponent)-1)*initial_temp*medium_lapse_rate;
     return alt;
 }
 

@@ -131,9 +131,9 @@ void task_acquire(void *pvParameters)
     
     ESP_ERROR_CHECK(bmp_init());
     ESP_ERROR_CHECK(icm_init());
-    xTaskCreate(gps_task, "GPS", configMINIMAL_STACK_SIZE * 4, &data, 6, NULL);
+    xTaskCreate(gps_task, "GPS", configMINIMAL_STACK_SIZE * 4, NULL, 6, NULL);
     xTaskCreate(bmp_task, "BMP", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL);
-    xTaskCreatePinnedToCore(fusion_task, "ICM", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL, 1);
+    xTaskCreate(fusion_task, "ICM", configMINIMAL_STACK_SIZE * 4, NULL, 4, NULL);
 
     while (true)
     {
