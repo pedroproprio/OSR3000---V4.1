@@ -43,7 +43,7 @@ esp_err_t altitude_config(const altitude_config_t *config) {
     return ESP_OK;
 }
 
-void altitude_predict(const float an) {
+/*void altitude_predict(const float an) {
     float u = an*cfg.g - x.acc_bias - cfg.g*x.angular_error;
     x.alt = x.alt + alt.F[0][1]*x.vel + alt.F[0][2]*x.acc_bias + alt.F[0][3]*x.angular_error + alt.G[0]*u;
     x.vel = x.vel + alt.F[1][2]*x.acc_bias + alt.F[1][3]*x.angular_error + alt.G[1]*u;
@@ -88,7 +88,7 @@ void altitude_predict(const float an) {
     alt.P[3][1] = FP[3][1] + FP[3][2]*alt.F[1][2] + FP[3][3]*alt.F[1][3];
     alt.P[3][2] = FP[3][2] + FP[3][3]*alt.F[2][3];
     alt.P[3][3] = FP[3][3] + cfg.angular_error_var;
-}
+}*/
 
 void altitude_update_bar(const float z_meas) {
     float y = z_meas - x.alt;

@@ -352,7 +352,7 @@ void app_main(void)
             STATUS &= ~(ARMED);
             xSemaphoreGive(xStatusMutex);
             disarm = false;
-            ESP_LOGW(TAG_MAIN, "Disarming system. Signaling...");
+            ESP_LOGI(TAG_MAIN, "Disarming system. Signaling...");
             gpio_set_level(LED_GPIO, HIGH);
             gpio_set_level(BUZZER_GPIO, HIGH);
             vTaskDelay(pdMS_TO_TICKS(1000));
