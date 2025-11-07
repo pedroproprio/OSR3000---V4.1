@@ -17,7 +17,7 @@ void task_deploy(void *pvParameters)
     float start_altitude = 0;
 
     xQueueReceive(xAltQueue, &current_altitude, portMAX_DELAY);
-    start_altitude = fabs(current_altitude);
+    start_altitude = current_altitude;
 
     bool drogue_caindo = false;
     bool main_caindo = false;
