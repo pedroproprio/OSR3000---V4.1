@@ -155,7 +155,7 @@ void task_littlefs(void *pvParameters)
     esp_vfs_littlefs_conf_t littlefs_config = {
         .base_path = "/littlefs",
         .partition_label = "littlefs",
-        .format_if_mount_failed = true,
+        .format_if_mount_failed = false,
         .dont_mount = false,
     };
 

@@ -103,7 +103,7 @@ void task_deploy(void *pvParameters)
             }
 
             if (!drogue_caindo)
-                return;
+                break;
 
             gpio_set_level(DROGUE_GPIO, HIGH);
             ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
@@ -127,7 +127,7 @@ void task_deploy(void *pvParameters)
             }
             
             if (!main_caindo)
-                return;
+                break;
             
             gpio_set_level(MAIN_GPIO, HIGH);
             ESP_LOGW(TAG_DEPLOY, "Main deployed");
