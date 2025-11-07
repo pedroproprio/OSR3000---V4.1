@@ -55,11 +55,11 @@ float get_altitude_from_pressure(const float pressure)
 {
     float alt;
     if (initial_temp == 0) 
-        alt = (powf(pressure/sea_pressure, exponent)-1)*298*medium_lapse_rate; // fixed 25°C 
+        alt = (1 -powf(pressure/sea_pressure, exponent))*298*medium_lapse_rate; // fixed 25°C 
     else 
-        alt = (powf(pressure/sea_pressure, exponent)-1)*initial_temp*medium_lapse_rate;
+        alt = (1 -powf(pressure/sea_pressure, exponent))*initial_temp*medium_lapse_rate;
     if (sea_pressure == 0) 
-        alt = (powf(pressure/101325, exponent)-1)*298*medium_lapse_rate;
+        alt = (1 -powf(pressure/101325, exponent))*298*medium_lapse_rate;
     return alt;
 }
 

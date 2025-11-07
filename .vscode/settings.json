@@ -13,6 +13,10 @@
 "idf.portWin": "COM5",
 "idf.port": "/dev/ttyACM0",
 "files.associations": {
-  "sdmmc_cmd.h": "c"
+  "sdmmc_cmd.h": "c",
+  "future": "c",
+  "istream": "c",
+  "ostream": "c",
+  "system_error": "c"
 }
 }

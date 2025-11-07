@@ -269,7 +269,7 @@ void app_main(void)
     }
 
     // If RBF is off at startup, set SAFE_MODE
-    if (gpio_get_level(RBF_GPIO) == LOW)
+    if (gpio_get_level(RBF_GPIO) == HIGH)
     {
         xSemaphoreTake(xStatusMutex, portMAX_DELAY);
         STATUS |= SAFE_MODE;
