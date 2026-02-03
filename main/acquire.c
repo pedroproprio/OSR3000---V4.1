@@ -127,7 +127,6 @@ void task_acquire(void *pvParameters)
     adc_cali_handle_t adc_cali_handle;
     adc_init(&adc_unit_handle, &adc_cali_handle);
 
-    uart_config.baud_rate = GPS_BAUDRATE;
     ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &uart_config));
     ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, GPS_BUFF_SIZE, 0, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, UART_PIN_NO_CHANGE, GPS_RX, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));

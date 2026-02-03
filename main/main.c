@@ -63,33 +63,6 @@ void task_deploy(void *pvParameters)
         drogue_caindo = !(local_status & DROGUE_DEPLOYED) && (current_altitude < max_altitude - DROGUE_THRESHOLD);
         main_caindo = (local_status & DROGUE_DEPLOYED) && !(local_status & MAIN_DEPLOYED) && (current_altitude < start_altitude + MAIN_ALTITUDE);
 
-        /*if (drogue_caindo)
-        {
-            gpio_set_level(DROGUE_GPIO, HIGH);
-            ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
-            vTaskDelay(pdMS_TO_TICKS(500));
-            gpio_set_level(DROGUE_GPIO, LOW);
-
-            xSemaphoreTake(xStatusMutex, portMAX_DELAY);
-            STATUS |= DROGUE_DEPLOYED;
-            xSemaphoreGive(xStatusMutex);
-        }
-
-        else if (main_caindo)
-        {
-            gpio_set_level(MAIN_GPIO, HIGH);
-            ESP_LOGW(TAG_DEPLOY, "Main deployed");
-            vTaskDelay(pdMS_TO_TICKS(500));
-            gpio_set_level(MAIN_GPIO, LOW);
-
-            xSemaphoreTake(xStatusMutex, portMAX_DELAY);
-            STATUS |= MAIN_DEPLOYED;
-            xSemaphoreGive(xStatusMutex);
-
-            // Delete task
-            vTaskDelete(NULL);
-        }*/
-
         if (drogue_caindo)
         {
             for (int i = 0; i < 5; i++)
@@ -103,7 +76,7 @@ void task_deploy(void *pvParameters)
             }
 
             if (!drogue_caindo)
-                break;
+                continue;
 
             gpio_set_level(DROGUE_GPIO, HIGH);
             ESP_LOGW(TAG_DEPLOY, "Drogue deployed");
@@ -127,7 +100,7 @@ void task_deploy(void *pvParameters)
             }
             
             if (!main_caindo)
-                break;
+                continue;
             
             gpio_set_level(MAIN_GPIO, HIGH);
             ESP_LOGW(TAG_DEPLOY, "Main deployed");
@@ -186,8 +159,8 @@ static void setup_peripherals(void)
     gpio_reset_pin(LED_GPIO);
     gpio_set_direction(LED_GPIO, GPIO_MODE_OUTPUT);
 
-    // When initializing, blink LED and beep buzzer 10 times
-    for (uint32_t i = 0; i < 10; ++i)
+    // When initializing, blink LED and beep buzzer 3 times
+    for (uint32_t i = 0; i < 3; ++i)
     {
         gpio_set_level(LED_GPIO, HIGH);
         gpio_set_level(BUZZER_GPIO, HIGH);

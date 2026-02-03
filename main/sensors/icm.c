@@ -6,8 +6,8 @@ static const char *TAG_FUSION = "FUSION";
 static const float gyro_scale = 1.0f/65.5f;
 static const float acc_scale = 1.0f/2048.0f;
 static const float mag_scale = 0.15f;
-//static const float temp_scale = 1.0f/333.87f;
-//static const float temp_offset = 14.0f;
+static const float temp_scale = 1.0f/333.87f;
+static const float temp_offset = 14.0f;
 
 static icm20948_device_t icm_dev;
 static icm0948_config_i2c_t icm_config;
@@ -153,7 +153,8 @@ void fusion_task(data_t *data, FusionOffset *offset, FusionAhrs *ahrs, icm20948_
     data->mag_z = agmt->mag.axes.z;
     data->temperature = agmt->tmp.val;
 
-    //if(initial_temp == 0) initial_temp = (agmt->tmp.val*temp_scale + temp_offset) + 273;
+    if(initial_temp == 0) initial_temp = (agmt->tmp.val*temp_scale + temp_offset) + 273;
+
 	// Acquire latest sensor data
     const clock_t timestamp = esp_timer_get_time(); // replace this with actual gyroscope timestamp
     FusionVector gyroscope = {{agmt->gyr.axes.x*gyro_scale, agmt->gyr.axes.y*gyro_scale, agmt->gyr.axes.z*gyro_scale}}; // in degrees/s
@@ -180,7 +181,7 @@ void fusion_task(data_t *data, FusionOffset *offset, FusionAhrs *ahrs, icm20948_
     data->orientation_q3 = q.element.x;
     data->orientation_q4 = q.element.y;
     const FusionVector g = FusionAhrsGetEarthAcceleration(ahrs);
-   // float acc = acc_mahalanobis(-g.axis.z);
+    float acc = acc_mahalanobis(-g.axis.z);
     //if (STATUS & ARMED) altitude_predict(acc);
     // print_agmt(agmt);
 }

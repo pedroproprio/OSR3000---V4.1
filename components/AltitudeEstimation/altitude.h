@@ -30,7 +30,7 @@ typedef struct {
   altitude_config_t config;
   altitude_state_t state;
 
-  float F[2][4];
+  float F[3][4];
   float G[2];
   float Q[2][2];
   float P[4][4];
