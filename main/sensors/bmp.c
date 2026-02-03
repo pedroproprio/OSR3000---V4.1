@@ -3,12 +3,14 @@
 static const char *TAG = "BMP390";
 static bmp390_handle_t bmp_dev_hdl;
 
-static const float medium_lapse_rate = 153.84615f; // (K/Km)^-1, L: average lapse rate
-static const float exponent = 0.1902665f;          // R*L/g*M (R: universal gas constant,
-                                                   // g: gravitational acceleration,
-                                                   // M: dry air molar mass)
+static const float medium_lapse_rate = 153.84615f;      // (K/Km)^-1, L: average lapse rate
+static const float exponent = 0.1902665f;               // R*L/g*M (R: universal gas constant,
+                                                        // g: gravitational acceleration,
+                                                        // M: dry air molar mass)
 
-static const float standard_sea_pressure = 101325;
+static const float standard_sea_pressure = 101325.0f;   // atmospheric preassure at sea level
+static const float standard_initial_temp = 298.0f;      // 25°C
+
 static float sea_pressure = 0.0f;
 static float pressure_offset = 0.0f;
 
@@ -72,22 +74,10 @@ void bmp_task(data_t *data)
 float get_altitude_from_pressure(const float pressure)
 {
     float alt;
-    // standard sea pressure + fixed 25°C
-    if (sea_pressure == 0 && initial_temp == 0)
-        alt = (1 - powf(pressure / standard_sea_pressure, exponent)) * 298 * medium_lapse_rate;
+    float check_sea_pressure = (sea_pressure == 0) ? standard_sea_pressure : sea_pressure;
+    float check_initial_temp = (initial_temp == 0) ? standard_initial_temp : initial_temp;
 
-    // fixed 25°C
-    else if (sea_pressure != 0 && initial_temp == 0)
-        alt = (1 - powf(pressure / sea_pressure, exponent)) * 298 * medium_lapse_rate;
-
-    // standard sea pressure
-    else if (sea_pressure == 0 && initial_temp != 0)
-        alt = (1 - powf(pressure / standard_sea_pressure, exponent)) * initial_temp * medium_lapse_rate;
-
-    // normal reading
-    else
-        alt = (1 - powf(pressure / sea_pressure, exponent)) * initial_temp * medium_lapse_rate;
-
+    alt = (1 - powf(pressure / check_sea_pressure, exponent)) * check_initial_temp * medium_lapse_rate;
     return alt;
 }
 
