@@ -151,7 +151,7 @@ void fusion_task(data_t *data, FusionOffset *offset, FusionAhrs *ahrs, icm20948_
     data->mag_x = agmt->mag.axes.x;
     data->mag_y = agmt->mag.axes.y;
     data->mag_z = agmt->mag.axes.z;
-    //data->temperature = agmt->tmp.val;
+    data->temperature = agmt->tmp.val;
 
     //if(initial_temp == 0) initial_temp = (agmt->tmp.val*temp_scale + temp_offset) + 273;
 	// Acquire latest sensor data
