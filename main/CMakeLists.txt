@@ -5,4 +5,4 @@ idf_component_register(SRCS "main.c"
                             "header.c"
                             "acquire.c"
                             "save_send.c"
-                    INCLUDE_DIRS ".")
+                        INCLUDE_DIRS ".")

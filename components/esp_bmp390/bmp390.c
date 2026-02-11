@@ -22,7 +22,7 @@
  */
 
 /**
- * @file bmp280.c
+ * @file bmp390.c
  *
  * ESP-IDF driver for BMP390 temperature and pressure sensor
  *
@@ -234,11 +234,11 @@ static inline esp_err_t bmp390_get_cal_factors(bmp390_handle_t handle) {
     /* validate arguments */
     ESP_ARG_CHECK( handle );
 
-    /* bmp280 attempt to request T1-T3 calibration values from device */
+    /* bmp390 attempt to request T1-T3 calibration values from device */
     ESP_ERROR_CHECK( bmp390_i2c_read_word_from(handle, 0x31, &handle->dev_cal_factors->dig_T1) );
     ESP_ERROR_CHECK( bmp390_i2c_read_word_from(handle, 0x33, &handle->dev_cal_factors->dig_T2) );
     ESP_ERROR_CHECK( bmp390_i2c_read_byte_from(handle, 0x35, (uint8_t *)&handle->dev_cal_factors->dig_T3) );
-    /* bmp280 attempt to request P1-P10 calibration values from device */
+    /* bmp390 attempt to request P1-P10 calibration values from device */
     ESP_ERROR_CHECK( bmp390_i2c_read_word_from(handle, 0x36, (uint16_t *)&handle->dev_cal_factors->dig_P1) );
     ESP_ERROR_CHECK( bmp390_i2c_read_word_from(handle, 0x38, (uint16_t *)&handle->dev_cal_factors->dig_P2) );
     ESP_ERROR_CHECK( bmp390_i2c_read_byte_from(handle, 0x3a, (uint8_t *)&handle->dev_cal_factors->dig_P3) );
@@ -558,20 +558,20 @@ esp_err_t bmp390_init(i2c_master_bus_handle_t master_handle, const bmp390_config
 
     /* validate device exists on the master bus */
     esp_err_t ret = i2c_master_probe(master_handle, bmp390_config->i2c_address, I2C_XFR_TIMEOUT_MS);
-    ESP_GOTO_ON_ERROR(ret, err, TAG, "device does not exist at address 0x%02x, bmp280 device handle initialization failed", bmp390_config->i2c_address);
+    ESP_GOTO_ON_ERROR(ret, err, TAG, "device does not exist at address 0x%02x, bmp390 device handle initialization failed", bmp390_config->i2c_address);
 
     /* validate memory availability for handle */
     bmp390_handle_t out_handle;
     out_handle = (bmp390_handle_t)calloc(1, sizeof(*out_handle));
-    ESP_GOTO_ON_FALSE(out_handle, ESP_ERR_NO_MEM, err, TAG, "no memory for i2c0 bmp280 device for init");
+    ESP_GOTO_ON_FALSE(out_handle, ESP_ERR_NO_MEM, err, TAG, "no memory for i2c0 bmp390 device for init");
 
     /* validate memory availability for handle calibration factors */
     out_handle->dev_cal_factors = (bmp390_cal_factors_t*)calloc(1, sizeof(bmp390_cal_factors_t));
-    ESP_GOTO_ON_FALSE(out_handle->dev_cal_factors, ESP_ERR_NO_MEM, err_handle, TAG, "no memory for i2c bmp280 device calibration factors for init");
+    ESP_GOTO_ON_FALSE(out_handle->dev_cal_factors, ESP_ERR_NO_MEM, err_handle, TAG, "no memory for i2c bmp390 device calibration factors for init");
 
     /* validate memory availability for handle converted calibration factors */
     out_handle->dev_conv_cal_factors = (bmp390_conv_cal_factors_t*)calloc(1, sizeof(bmp390_conv_cal_factors_t));
-    ESP_GOTO_ON_FALSE(out_handle->dev_conv_cal_factors, ESP_ERR_NO_MEM, err_handle, TAG, "no memory for i2c bmp280 device converted calibration factors for init");
+    ESP_GOTO_ON_FALSE(out_handle->dev_conv_cal_factors, ESP_ERR_NO_MEM, err_handle, TAG, "no memory for i2c bmp390 device converted calibration factors for init");
 
     /* copy configuration */
     out_handle->dev_config = *bmp390_config;
@@ -816,7 +816,7 @@ esp_err_t bmp390_set_temperature_oversampling(bmp390_handle_t handle, const bmp3
     return ESP_OK;
 }
 
-esp_err_t bmp280_get_output_data_rate(bmp390_handle_t handle, bmp390_output_data_rates_t *const output_data_rate) {
+esp_err_t bmp390_get_output_data_rate(bmp390_handle_t handle, bmp390_output_data_rates_t *const output_data_rate) {
     bmp390_output_data_rate_register_t odr;
 
     /* validate arguments */
@@ -831,7 +831,7 @@ esp_err_t bmp280_get_output_data_rate(bmp390_handle_t handle, bmp390_output_data
     return ESP_OK;
 }
 
-esp_err_t bmp280_set_output_data_rate(bmp390_handle_t handle, const bmp390_output_data_rates_t output_data_rate) {
+esp_err_t bmp390_set_output_data_rate(bmp390_handle_t handle, const bmp390_output_data_rates_t output_data_rate) {
     bmp390_output_data_rate_register_t odr;
 
     /* validate arguments */

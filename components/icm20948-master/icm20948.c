@@ -1,6 +1,7 @@
 #include "icm20948.h"
 #include "icm20948_registers.h"
 #include "ak09916_registers.h"
+#include "freertos/FreeRTOS.h"
 
 //#include "freertos/FreeRTOS.h"
 
@@ -1139,17 +1140,18 @@ icm20948_status_e icm20948_read_fifo(icm20948_device_t *pdev, uint8_t *data, uin
 
   return retval;
 }
+
 // Magnetometer (AK09916)
 icm20948_status_e icm20948_init_magnetometer(icm20948_device_t *pdev) {
     icm20948_status_e result;
-    
+
     result = icm20948_i2c_master_enable(pdev, true);
     if (result != ICM_20948_STAT_OK) return result;
-    
+
     result = icm20948_i2c_controller_configure_peripheral(pdev, 0, 
         MAG_AK09916_I2C_ADDR, 
         AK09916_REG_ST1,
-        8,                // ST1 + 6 bytes dados + ST2
+        8,                // ST1 + 6 data bytes + ST2
         true,             // Read
         true,             // Enable
         false,            // data_only = false
@@ -1157,7 +1159,7 @@ icm20948_status_e icm20948_init_magnetometer(icm20948_device_t *pdev) {
         false,            // swap = false
         0);
     if (result != ICM_20948_STAT_OK) return result;
-    
+
     result = icm20948_i2c_controller_configure_peripheral(pdev, 1,
         MAG_AK09916_I2C_ADDR,
         AK09916_REG_CNTL2,
@@ -1167,13 +1169,12 @@ icm20948_status_e icm20948_init_magnetometer(icm20948_device_t *pdev) {
         false,            // data_only = false
         false,            // grp = false  
         false,            // swap = false
-        AK09916_MODE_CONT_100_HZ);
+        AK09916_MODE_CONT_50_HZ);
     if (result != ICM_20948_STAT_OK) return result;
-    
-    // 4. Configurar ODR do I2C Master
+
     result = icm20948_set_bank(pdev, 3);
-    uint8_t mstODRconfig = 0x04; // Set the ODR configuration to 1100/2^4 = 68.75Hz
+    uint8_t mstODRconfig  = 0x05; // Set the ODR configuration to 1100/2^5 = 34.375Hz
     result = icm20948_execute_w(pdev, AGB3_REG_I2C_MST_ODR_CONFIG, &mstODRconfig, 1);
-    
+
     return result;
 }

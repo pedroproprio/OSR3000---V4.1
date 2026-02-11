@@ -5,12 +5,39 @@ static const char *TAG_LITTLEFS = "LittleFS";
 static const char *TAG_SD = "SD Card";
 static const char *TAG_LORA = "LoRa";
 
+void save_nvs_counters(void *pvParameters)
+{
+    const EventBits_t bits_to_wait = EVT_SD_DONE | EVT_LFS_DONE;
+
+    // Wait until both SD and LittleFS tasks signal that they have finished
+    xEventGroupWaitBits(xNVSCounterEvent, bits_to_wait, pdTRUE, pdTRUE, portMAX_DELAY);
+
+    nvs_handle_t nvs_handle;
+    ESP_ERROR_CHECK(nvs_open("storage", NVS_READWRITE, &nvs_handle));
+
+    // Increment counters
+    file_counter_g.file_numSD += 1;
+    file_counter_g.file_numLFS += 1;
+    
+    // Save updated counters to NVS
+    nvs_set_i32(nvs_handle, "sd_counter", file_counter_g.file_numSD);
+    nvs_set_i32(nvs_handle, "lfs_counter", file_counter_g.file_numLFS);
+    ESP_ERROR_CHECK(nvs_commit(nvs_handle));
+
+    nvs_close(nvs_handle);
+
+    ESP_LOGW("NVS COUNTER", "Flight safely committed to NVS");
+
+    vTaskDelete(NULL);
+}
+
+
 // task_sd reads data from queue and writes it to SD card
 void task_sd(void *pvParameters)
 {
+    const file_counter_t counter = *(file_counter_t *)pvParameters;
     esp_err_t errSD;
     sdmmc_card_t *card;
-    file_counter_t counterSD = *(file_counter_t *)pvParameters;
 
     // Settings for mounting FAT filesystem
     esp_vfs_fat_sdmmc_mount_config_t mount_config = {
@@ -39,7 +66,7 @@ void task_sd(void *pvParameters)
     errSD = spi_bus_initialize(host.slot, &bus_config, SDSPI_DEFAULT_DMA);
     if (errSD != ESP_OK)
     {
-        ESP_LOGE(TAG_SD, "Failed to initialize SPI bus.");
+        ESP_LOGE(TAG_SD, "Failed to initialize SPI bus: %s", esp_err_to_name(errSD));
         vTaskDelete(NULL);
     }
     sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
@@ -53,15 +80,10 @@ void task_sd(void *pvParameters)
     if (errSD != ESP_OK)
     {
         if (errSD == ESP_FAIL)
-        {
             ESP_LOGE(TAG_SD, "Failed to mount filesystem. "
                              "If you want the card to be formatted, set the CONFIG_SD_FORMAT_IF_MOUNT_FAILED menuconfig option.");
-        }
         else
-        {
-            ESP_LOGE(TAG_SD, "Failed to initialize the card (%s). ",
-                     esp_err_to_name(errSD));
-        }
+            ESP_LOGE(TAG_SD, "Failed to initialize the card: %s. ", esp_err_to_name(errSD));
         spi_bus_free(host.slot);
         ESP_LOGI(TAG_SD, "SPI bus freed");
         vTaskDelete(NULL);
@@ -69,13 +91,11 @@ void task_sd(void *pvParameters)
     ESP_LOGI(TAG_SD, "Filesystem mounted");
 
     // Format mode
-    if (counterSD.format == pdTRUE)
+    if (counter.format == pdTRUE)
     {
         errSD = esp_vfs_fat_sdcard_format(SD_MOUNT, card);
         if (errSD != ESP_OK)
-        {
-            ESP_LOGE(TAG_SD, "Failed to format FATFS (%s)", esp_err_to_name(errSD));
-        }
+            ESP_LOGE(TAG_SD, "Failed to format FATFS: %s", esp_err_to_name(errSD));
         else
             ESP_LOGI(TAG_SD, "Format Successful");
         
@@ -91,11 +111,11 @@ void task_sd(void *pvParameters)
 
     // Create log file
     char log_name[FILENAME_LENGTH];
-    snprintf(log_name, FILENAME_LENGTH, "%s/flight%ld.bin", SD_MOUNT, counterSD.file_num);
+    snprintf(log_name, FILENAME_LENGTH, "%s/flight%ld.bin", SD_MOUNT, counter.file_numSD);
     ESP_LOGI(TAG_SD, "Creating file %s", log_name);
-
-    FILE *f = fopen(log_name, "w");
-    if (f == NULL)
+    
+    FILE *f = fopen(log_name, "wb");
+    if (!f)
     {
         ESP_LOGE(TAG_SD, "Failed to open file for writing");
         esp_vfs_fat_sdcard_unmount(SD_MOUNT, card);
@@ -104,52 +124,80 @@ void task_sd(void *pvParameters)
         ESP_LOGI(TAG_SD, "SPI bus freed");
         vTaskDelete(NULL);
     }
-    fclose(f);
+
+    static uint8_t write_buffer[SD_BUFFER_SIZE];
+    uint16_t buffer_offset = 0;
+    save_t save_data;
+    TickType_t last_sync = xTaskGetTickCount();
 
     while (true)
     {
-        data_t buffer[SD_BUFFER_SIZE / sizeof(data_t)]; 
-
         // Read data from queue
-        for (int i = 0; i < SD_BUFFER_SIZE / sizeof(data_t); ++i)
+        if (xQueueReceive(xSDQueue, &save_data, portMAX_DELAY) == pdTRUE)
         {
-            xQueueReceive(xSDQueue, &buffer[i], portMAX_DELAY);
+            // If buffer is full, write to file
+            if (buffer_offset + sizeof(save_t) > SD_BUFFER_SIZE)
+            {
+                size_t w = fwrite(write_buffer, 1, SD_BUFFER_SIZE, f);
+                if (w != SD_BUFFER_SIZE)
+                    ESP_LOGE(TAG_SD, "Failed to write data to file");
+                else
+                    ESP_LOGD(TAG_SD, "Data written to SD card");
+                buffer_offset = 0; // Reset buffer index for next batch
+                taskYIELD(); // Yield to allow other tasks to run
+                
+                if (xTaskGetTickCount() - last_sync >= pdMS_TO_TICKS(5000)) // Flushes every 5s
+                {
+                    fflush(f);
+                    fsync(fileno(f));
+                    last_sync = xTaskGetTickCount();
+                    ESP_LOGD(TAG_SD, "File flushed");
+                    taskYIELD(); // Yield to allow other tasks to run
+                }
+            }
+            // Copy remaining data to buffer
+            memcpy(&write_buffer[buffer_offset], &save_data, sizeof(save_t));
+            buffer_offset += sizeof(save_t);
         }
-
-        // Write buffer to file
-        f = fopen(log_name, "a");
-        if (f == NULL)
-        {
-            ESP_LOGE(TAG_SD, "Failed to open file for writing");
-        }
-        fwrite(buffer, sizeof(data_t), SD_BUFFER_SIZE / sizeof(data_t), f);
-        fclose(f);
-        ESP_LOGI(TAG_SD, "Data written to SD card");
 
         // Check if landed
-        xSemaphoreTake(xStatusMutex, portMAX_DELAY);
-        if (STATUS & LANDED)
-        {
-            xSemaphoreGive(xStatusMutex);
-
-            ESP_LOGW(TAG_SD, "Landed, unmounting SD card");
-            esp_vfs_fat_sdcard_unmount(SD_MOUNT, card);
-            ESP_LOGI(TAG_SD, "Card unmounted");
-            spi_bus_free(host.slot);
-            ESP_LOGI(TAG_SD, "SPI bus freed");
-
-            vTaskDelete(NULL);
-        }
-        else
-            xSemaphoreGive(xStatusMutex);
+        portENTER_CRITICAL(&xDATAMutex);
+        bool landed = (data_g.status & LANDED);
+        portEXIT_CRITICAL(&xDATAMutex);
+        if (landed)
+            break;
     }
+
+    if(buffer_offset > 0) // Write remaining data to file
+    {
+        size_t w = fwrite(write_buffer, 1, buffer_offset, f);
+        if (w != buffer_offset)
+            ESP_LOGE(TAG_SD, "Failed to write remaining data to file");
+        else
+            ESP_LOGD(TAG_SD, "Remaining data written to SD card");
+    }
+    
+    ESP_LOGW(TAG_SD, "Landed, closing file and unmounting SD card");
+    fflush(f);
+    fsync(fileno(f));
+    fclose(f);
+    taskYIELD(); // Yield to allow other tasks to run
+    vTaskDelay(pdMS_TO_TICKS(20)); // Short delay to ensure SPI driver is done
+    ESP_LOGI(TAG_SD, "File closed");
+    esp_vfs_fat_sdcard_unmount(SD_MOUNT, card);
+    ESP_LOGI(TAG_SD, "Card unmounted");
+    spi_bus_free(host.slot);
+    ESP_LOGI(TAG_SD, "SPI bus freed");
+    xEventGroupSetBits(xNVSCounterEvent, EVT_SD_DONE); // Signal that SD task is done
+
+    vTaskDelete(NULL);
 }
 
 // task_littlefs reads data from queue and writes it to LittleFS
 void task_littlefs(void *pvParameters)
 {
+    const file_counter_t counter = *(file_counter_t *)pvParameters;
     esp_err_t errFS;
-    file_counter_t counterFS = *(file_counter_t *)pvParameters;
 
     // Settings for initializing LittleFS
     esp_vfs_littlefs_conf_t littlefs_config = {
@@ -165,35 +213,20 @@ void task_littlefs(void *pvParameters)
     {
         if (errFS == ESP_FAIL)
             ESP_LOGE(TAG_LITTLEFS, "Failed to mount or format filesystem");
-
         else if (errFS == ESP_ERR_NOT_FOUND)
             ESP_LOGE(TAG_LITTLEFS, "Failed to find LittleFS partition");
-
         else
-            ESP_LOGE(TAG_LITTLEFS, "Failed to initialize LittleFS (%s)", esp_err_to_name(errFS));
+            ESP_LOGE(TAG_LITTLEFS, "Failed to initialize LittleFS: %s", esp_err_to_name(errFS));
 
         vTaskDelete(NULL);
     }
 
-    size_t total = 0, used = 0;
-    errFS = esp_littlefs_info(littlefs_config.partition_label, &total, &used);
-    if (errFS != ESP_OK)
-    {
-        ESP_LOGE(TAG_LITTLEFS, "Failed to get LittleFS partition information (%s)", esp_err_to_name(errFS));
-    }
-    else
-    {
-        ESP_LOGW(TAG_LITTLEFS, "Partition size: total: %d, used: %d", total, used);
-    }
-
     // Format mode
-    if (counterFS.format == pdTRUE)
+    if (counter.format == pdTRUE)
     {
         errFS = esp_littlefs_format(littlefs_config.partition_label);
         if (errFS != ESP_OK)
-        {
-            ESP_LOGE(TAG_LITTLEFS, "Failed to format LittleFS (%s)", esp_err_to_name(errFS));
-        }
+            ESP_LOGE(TAG_LITTLEFS, "Failed to format LittleFS: %s", esp_err_to_name(errFS));
         else
             ESP_LOGI(TAG_LITTLEFS, "Format Successful");
 
@@ -202,92 +235,101 @@ void task_littlefs(void *pvParameters)
 
     // Create log file
     char log_name[FILENAME_LENGTH];
-    snprintf(log_name, FILENAME_LENGTH, "%s/flight%ld.bin", littlefs_config.base_path, counterFS.file_num);
+    snprintf(log_name, FILENAME_LENGTH, "%s/flight%ld.bin", littlefs_config.base_path, counter.file_numLFS);
     ESP_LOGI(TAG_LITTLEFS, "Creating file %s", log_name);
 
-    FILE *f = fopen(log_name, "w");
-    if (f == NULL)
+    FILE *f = fopen(log_name, "wb");
+    if (!f)
     {
         ESP_LOGE(TAG_LITTLEFS, "Failed to open file for writing");
         esp_vfs_littlefs_unregister(littlefs_config.partition_label);
         ESP_LOGI(TAG_LITTLEFS, "LittleFS unmounted");
         vTaskDelete(NULL);
     }
-    fclose(f);
 
-    uint32_t oldest_file_num = counterFS.file_num;
+    static uint8_t buffer[LITTLEFS_BUFFER_SIZE];
+    uint16_t buffer_offset = 0;
+    save_t save_data;
+    bool lfs_full = false;
+
+    size_t total = 0, used = 0;
+    errFS = esp_littlefs_info(littlefs_config.partition_label, &total, &used);
+    if (errFS != ESP_OK)
+        ESP_LOGE(TAG_LITTLEFS, "Failed to get LittleFS partition information: %s", esp_err_to_name(errFS));
+    else
+        ESP_LOGW(TAG_LITTLEFS, "Partition size: total: %d, used: %d", total, used);
 
     while (true)
     {
-        data_t buffer[SD_BUFFER_SIZE / sizeof(data_t)];
-
         // Read data from queue
-        for (int i = 0; i < SD_BUFFER_SIZE / sizeof(data_t); ++i)
+        if (xQueueReceive(xLittleFSQueue, &save_data, portMAX_DELAY) == pdTRUE)
         {
-            xQueueReceive(xLittleFSQueue, &buffer[i], portMAX_DELAY);  
-        }
-
-        // Delete oldest file if disk space is full
-        while (used + sizeof(buffer) > MAX_USED * total)
-        {
-            oldest_file_num++;
-            if (oldest_file_num > MAX_LFS_FILES)
+            // If buffer is full, write to file
+            if (buffer_offset + sizeof(save_t) > LITTLEFS_BUFFER_SIZE)
             {
-                oldest_file_num = 0;
+                if (!lfs_full)
+                {
+                    if (used + buffer_offset > MAX_FLASH_SIZE_USED * total) // Check if there's space before writing
+                    {
+                        ESP_LOGW(TAG_LITTLEFS, "Flash memory almost full.");
+                        lfs_full = true;
+                        portENTER_CRITICAL(&xDATAMutex);
+                        data_g.status |= LFS_FULL;
+                        portEXIT_CRITICAL(&xDATAMutex);
+                    }
+                    else
+                    {
+                        size_t w = fwrite(buffer, 1, LITTLEFS_BUFFER_SIZE, f);
+                        if (w != LITTLEFS_BUFFER_SIZE)
+                            ESP_LOGE(TAG_LITTLEFS, "Failed to write data to file");
+                        else
+                            ESP_LOGD(TAG_LITTLEFS, "Data written to LittleFS");
+                        used += sizeof(buffer); // Update used space tracker
+                        taskYIELD(); // Yield to allow other tasks to run
+                    }
+                }
+                buffer_offset = 0; // Reset buffer index for next batch (or drop if full)
             }
-            char oldest_file_name[FILENAME_LENGTH];
-            snprintf(oldest_file_name, FILENAME_LENGTH, "%s/flight%ld.bin", littlefs_config.base_path, oldest_file_num);
-
-            struct stat st;
-            if (stat(oldest_file_name, &st) == 0) // If file exists
+            // Copy remaining data to buffer if we still have space available
+            if (!lfs_full)
             {
-                ESP_LOGW(TAG_LITTLEFS, "Deleting file %s", oldest_file_name);
-                unlink(oldest_file_name); // Delete file
-            }
-
-            esp_littlefs_info(littlefs_config.partition_label, &total, &used); // Update used space
-
-            if (oldest_file_num == counterFS.file_num) // If oldest file is current file
-            {
-                ESP_LOGE(TAG_LITTLEFS, "No more disk space, unmounting LittleFS");
-
-                esp_vfs_littlefs_unregister(littlefs_config.partition_label);
-                ESP_LOGI(TAG_LITTLEFS, "LittleFS unmounted");
-
-                xSemaphoreTake(xStatusMutex, portMAX_DELAY);
-                STATUS |= LFS_FULL;
-                xSemaphoreGive(xStatusMutex);
-
-                vTaskDelete(NULL);
+                memcpy(&buffer[buffer_offset], &save_data, sizeof(save_t));
+                buffer_offset += sizeof(save_t);
             }
         }
-
-        // Write buffer to file
-        f = fopen(log_name, "a");
-        if (f == NULL)
-        {
-            ESP_LOGE(TAG_LITTLEFS, "Failed to open file for writing");
-        }
-        fwrite(buffer, sizeof(data_t), SD_BUFFER_SIZE / sizeof(data_t), f);
-        fclose(f);                             
-        ESP_LOGI(TAG_LITTLEFS, "Data written to LittleFS.");
-
-        // Update used space tracker
-        used += sizeof(buffer);  
 
         // Check if landed
-        xSemaphoreTake(xStatusMutex, portMAX_DELAY);
-        if (STATUS & LANDED)
-        {
-            xSemaphoreGive(xStatusMutex);
-            ESP_LOGW(TAG_LITTLEFS, "Landed, unmounting LittleFS");
-            esp_vfs_littlefs_unregister(littlefs_config.partition_label);
-            ESP_LOGI(TAG_LITTLEFS, "LittleFS unmounted");
-            vTaskDelete(NULL);
-        }
-        else
-            xSemaphoreGive(xStatusMutex);
+        portENTER_CRITICAL(&xDATAMutex);
+        bool landed = (data_g.status & LANDED);
+        portEXIT_CRITICAL(&xDATAMutex);
+        if (landed)
+            break;
     }
+
+    if (buffer_offset > 0) // Write remaining data to file
+    {
+        if (lfs_full || used + buffer_offset > MAX_FLASH_SIZE_USED * total) // Check if there's space before writing
+            ESP_LOGW(TAG_LITTLEFS, "Flash memory almost full. Remaining data not written.");
+        else
+        {
+            size_t w = fwrite(buffer, 1, buffer_offset, f);
+            if (w != buffer_offset)
+                ESP_LOGE(TAG_LITTLEFS, "Failed to write remaining data to file");
+            else
+                ESP_LOGD(TAG_LITTLEFS, "Remaining data written to LittleFS");
+            used += buffer_offset; // Update used space tracker
+        }
+    }
+    
+    ESP_LOGW(TAG_LITTLEFS, "Landed, closing file and unmounting LittleFS");
+    fclose(f);
+    ESP_LOGI(TAG_LITTLEFS, "File closed");
+    vTaskDelay(pdMS_TO_TICKS(20));
+    esp_vfs_littlefs_unregister(littlefs_config.partition_label);
+    ESP_LOGI(TAG_LITTLEFS, "LittleFS unmounted");
+    xEventGroupSetBits(xNVSCounterEvent, EVT_LFS_DONE); // Signal that LFS task is done
+    
+    vTaskDelete(NULL);
 }
 
 static SemaphoreHandle_t xLoraAuxSem = NULL;
@@ -295,76 +337,64 @@ static SemaphoreHandle_t xLoraAuxSem = NULL;
 static void IRAM_ATTR handle_interrupt_fromisr(void *arg) {
     BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
-    xSemaphoreGiveFromISR(xLoraAuxSem, &xHigherPriorityTaskWoken);
+    if (xLoraAuxSem != NULL)
+        xSemaphoreGiveFromISR(xLoraAuxSem, &xHigherPriorityTaskWoken);
 
-    portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken)
+        portYIELD_FROM_ISR();
 }
 
-static bool lora_send_data_blocking(const data_t *p)
+static bool lora_wait_aux_high(TickType_t timeout_ticks)
 {
-    const uint8_t *buf = (const uint8_t *)p;
-    const int total = sizeof(data_t);
-    int written = 0;
-    int attempt = 0;
+    if (gpio_get_level(LORA_AUX))
+        return true;
 
-    // this will try to write all bytes
-    while (written < total && attempt < LORA_TX_RETRIES) {
-        int w = uart_write_bytes(UART_NUM_2, (const char *)(buf + written), total - written);
-        if (w > 0) {
-            written += w;
-            attempt = 0;
-            //ESP_LOGD(TAG_LORA, "uart_write_bytes wrote %d/%d", written, total);
-        } else {
-            ESP_LOGW(TAG_LORA, "uart_write_bytes returned %d, retrying...", w);
-            attempt++;
-            vTaskDelay(pdMS_TO_TICKS(50));
-        }
-    }
+    if (xSemaphoreTake(xLoraAuxSem, timeout_ticks) == pdTRUE)
+        return true;
 
-    if (written != total) {
-        ESP_LOGE(TAG_LORA, "Failed to write full payload to UART (%d/%d)", written, total);
+    ESP_LOGW(TAG_LORA, "AUX timeout");
+    return false;
+}
+
+static bool lora_send_packet(const send_t *pkt)
+{
+    if (pkt == NULL)
+        return false;
+
+    const uint8_t *buf = (const uint8_t *)pkt;
+    const size_t total = sizeof(send_t);
+
+    if (!lora_wait_aux_high(pdMS_TO_TICKS(CONFIG_E220_AUX_TIMEOUT_MS))) // Waits for LoRa to be ready
+    {
+        ESP_LOGW(TAG_LORA, "LoRa busy before TX");
         return false;
     }
 
-    // Wait for UART TX to complete
-    esp_err_t werr = uart_wait_tx_done(UART_NUM_2, pdMS_TO_TICKS(CONFIG_E220_TX_DONE_TIMEOUT_MS));
-    if (werr != ESP_OK) {
-        ESP_LOGW(TAG_LORA, "uart_wait_tx_done returned %s", esp_err_to_name(werr));
-        // we still wait for AUX below, but this indicates driver-level issues
+    int written = uart_write_bytes(LORA_UART_NUM, (const char *)buf, total); // Writes packet to UART at once
+
+    if (written != total)
+    {
+        ESP_LOGE(TAG_LORA, "UART write failed (%d/%d)", written, total);
+        return false;
     }
 
-    // Wait for AUX to go HIGH again
-    if (xLoraAuxSem != NULL) {
-        if (xSemaphoreTake(xLoraAuxSem, pdMS_TO_TICKS(CONFIG_E220_AUX_TIMEOUT_MS)) == pdTRUE) {
-            // AUX confirmed = success
-            //ESP_LOGD(TAG_LORA, "AUX confirmed transmission finished");
-            return true;
-        } else {
-            ESP_LOGW(TAG_LORA, "Timeout waiting for AUX after UART TX");
-            return false;
-        }
-    } else {
-        // if the semaphore is NULL, fallback to polling (should not happen)
-        uint32_t start = esp_log_timestamp();
-        while (gpio_get_level(LORA_AUX) == 0) {
-            vTaskDelay(pdMS_TO_TICKS(1));
-            if ((esp_log_timestamp() - start) > CONFIG_E220_AUX_TIMEOUT_MS) {
-                ESP_LOGW(TAG_LORA, "Timeout polling AUX after UART TX");
-                return false;
-            }
-        }
-        return true;
+    if (!lora_wait_aux_high(pdMS_TO_TICKS(CONFIG_E220_AUX_TIMEOUT_MS))) // Waits for LoRa to finish transmission
+    {
+        ESP_LOGW(TAG_LORA, "TX not confirmed by AUX");
+        return false;
     }
+
+    return true;
 }
 
-void lora_init(void)
+static void lora_init(void)
 {
-    uart_config_t uart_config = {
+    const uart_config_t uart_config = {
         .baud_rate = LORA_BAUDRATE,
         .data_bits = UART_DATA_8_BITS,
-        .parity    = UART_PARITY_DISABLE,
+        .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE
+        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
     };
 
     ESP_ERROR_CHECK(uart_param_config(LORA_UART_NUM, &uart_config));
@@ -374,43 +404,36 @@ void lora_init(void)
     xLoraAuxSem = xSemaphoreCreateBinary();
 
     gpio_set_direction(LORA_AUX, GPIO_MODE_INPUT);
-    gpio_pullup_dis(LORA_AUX);
+    gpio_pullup_en(LORA_AUX); // Enable pull-up on AUX pin
     gpio_set_intr_type(LORA_AUX, GPIO_INTR_POSEDGE);
 
     gpio_install_isr_service(0);
     gpio_isr_handler_add(LORA_AUX, handle_interrupt_fromisr, NULL);
+
+    // Set M0 and M1 to 0 for normal mode
+    gpio_set_direction(LORA_M0, GPIO_MODE_OUTPUT);
+    gpio_set_direction(LORA_M1, GPIO_MODE_OUTPUT);
+    gpio_set_level(LORA_M0, 0);
+    gpio_set_level(LORA_M1, 0);
 
     ESP_LOGI(TAG_LORA, "LoRa UART initialized (baud %d)", LORA_BAUDRATE);
 }
 
 void task_lora(void *pvParameters)
 {
-    data_t data;
-
     lora_init();
+
+    send_t send_data;
+    TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (true)
     {
-        while (xQueueReceive(xLoraQueue, &data, portMAX_DELAY) == pdTRUE)
-        {
-            // Clear any stale semaphore state
-            xSemaphoreTake(xLoraAuxSem, 0);
-            // Wait for AUX HIGH before transmission
-            if (gpio_get_level(LORA_AUX) == 0) {
-                // Wait for ISR to signal AUX rising edge
-                if (xSemaphoreTake(xLoraAuxSem, pdMS_TO_TICKS(CONFIG_E220_AUX_TIMEOUT_MS)) != pdTRUE) {
-                    ESP_LOGW(TAG_LORA, "Timeout waiting for AUX before TX");
-                    continue; // Skip this transmission
-                }
-            }
+        while (xQueueReceive(xLoraQueue, &send_data, 0) == pdTRUE)
+            // discard old packets automatically
 
-            bool ok = lora_send_data_blocking(&data); 
-            if (!ok) { 
-                ESP_LOGE(TAG_LORA, "Failed to send LoRa packet — discarded"); 
-            }
-            // Wait for ISR to signal that AUX went HIGH again (finished TX)
-            xSemaphoreTake(xLoraAuxSem, pdMS_TO_TICKS(1000));
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        if (!lora_send_packet(&send_data))
+            ESP_LOGE(TAG_LORA, "Failed to send LoRa packet — discarded");
+
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(LORA_RATE_MS));
     }
 }
