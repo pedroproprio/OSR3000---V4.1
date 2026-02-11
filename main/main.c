@@ -170,7 +170,7 @@ void app_main(void)
     if (gpio_get_level(RBF_GPIO) == LOW)
         data_g.status |= SAFE_MODE;
 
-    // Start tasks
+    // Create tasks
     xTaskCreatePinnedToCore(gps_task, "GPS", configMINIMAL_STACK_SIZE * 4, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(bmp_task, "BMP", configMINIMAL_STACK_SIZE * 4, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(fusion_task, "ICM", configMINIMAL_STACK_SIZE * 4, NULL, 5, NULL, 1);

@@ -157,7 +157,7 @@ void send_queues(const data_t *data)
     }
     send_t send_data;
     pack_send_data(data, &send_data);
-    xQueueSend(xLoraQueue, &send_data, 0); // Send to LoRa queue
+    xQueueOverwrite(xLoraQueue, &send_data); // Send to LoRa queue
 }
 
 // task_deploy deploys parachutes

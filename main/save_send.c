@@ -428,8 +428,7 @@ void task_lora(void *pvParameters)
 
     while (true)
     {
-        while (xQueueReceive(xLoraQueue, &send_data, 0) == pdTRUE)
-            // discard old packets automatically
+        xQueueReceive(xLoraQueue, &send_data, 0); // Non-blocking receive, will use last data if queue is empty
 
         if (!lora_send_packet(&send_data))
             ESP_LOGE(TAG_LORA, "Failed to send LoRa packet — discarded");
