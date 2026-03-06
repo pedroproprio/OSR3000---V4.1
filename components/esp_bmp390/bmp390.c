@@ -522,13 +522,13 @@ static inline esp_err_t bmp390_setup(bmp390_handle_t handle) {
     ESP_RETURN_ON_ERROR(bmp390_get_interrupt_control_register(handle, &interrupt_control_reg), TAG, "read interrupt control register for init failed");
 
     /* initialize configuration registers from configuration */
-    output_data_rate_reg.bits.output_data_rate     = handle->dev_config.output_data_rate;
-    config_reg.bits.iir_filter                     = handle->dev_config.iir_filter;
-    power_ctrl_reg.bits.pressure_enabled           = true;
-    power_ctrl_reg.bits.temperature_enabled        = true;
-    power_ctrl_reg.bits.power_mode                 = handle->dev_config.power_mode;
-    oversampling_reg.bits.temperature_oversampling = handle->dev_config.temperature_oversampling;
-    oversampling_reg.bits.pressure_oversampling    = handle->dev_config.pressure_oversampling;
+    output_data_rate_reg.bits.output_data_rate        = handle->dev_config.output_data_rate;
+    config_reg.bits.iir_filter                        = handle->dev_config.iir_filter;
+    power_ctrl_reg.bits.pressure_enabled              = true;
+    power_ctrl_reg.bits.temperature_enabled           = true; // without temperature compensation, pressure compensation is not possible, so enable both by default
+    power_ctrl_reg.bits.power_mode                    = handle->dev_config.power_mode;
+    oversampling_reg.bits.temperature_oversampling    = handle->dev_config.temperature_oversampling;
+    oversampling_reg.bits.pressure_oversampling       = handle->dev_config.pressure_oversampling;
     interrupt_control_reg.bits.irq_data_ready_enabled = true;
     
     /* attempt to write configuration register */

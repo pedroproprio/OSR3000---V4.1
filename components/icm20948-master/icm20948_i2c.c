@@ -1,9 +1,4 @@
-#include "driver/i2c_master.h"
-#include "icm20948.h"
 #include "icm20948_i2c.h"
-#include <string.h>
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
 icm20948_status_e icm20948_internal_write_i2c(uint8_t reg, uint8_t *data, uint32_t len, void *user)
 {

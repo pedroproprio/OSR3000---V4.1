@@ -1,0 +1,19 @@
+version: "1.0.0"
+description: "Error State Kalman Filter component for ESP-IDF"
+license: "MIT"
+url: "https://github.com/pedroproprio/eskf"
+repository: "https://github.com/pedroproprio/eskf.git"
+documentation: "https://github.com/pedroproprio/eskf/blob/main/README.md"
+tags:
+  - esp32
+  - esp-idf
+  - kalman-filter
+  - eskf
+  - imu
+  - gps
+  - barometer
+  - altitude-estimation
+dependencies:
+  idf: ">=5.0"
+maintainers:
+  - Pedro Rodrigues

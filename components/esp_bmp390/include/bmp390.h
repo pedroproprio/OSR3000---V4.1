@@ -60,14 +60,15 @@ extern "C" {
 /*
  * BMP390 macros
 */
-#define I2C_BMP390_CONFIG_DEFAULT {                                          \
-        .i2c_address                = I2C_BMP390_DEV_ADDR_HI,                \
-        .i2c_clock_speed            = I2C_BMP390_DEV_CLK_SPD,                \
-        .power_mode                 = BMP390_POWER_MODE_FORCED,              \
-        .iir_filter                 = BMP390_IIR_FILTER_OFF,                 \
-        .pressure_oversampling      = BMP390_PRESSURE_OVERSAMPLING_8X,       \
-        .temperature_oversampling   = BMP390_TEMPERATURE_OVERSAMPLING_8X,    \
-        .output_data_rate           = BMP390_ODR_40MS }
+#define I2C_BMP390_CONFIG_DEFAULT {                                             \
+        .i2c_address                   = I2C_BMP390_DEV_ADDR_HI,                \
+        .i2c_clock_speed               = I2C_BMP390_DEV_CLK_SPD,                \
+        .power_mode                    = BMP390_POWER_MODE_FORCED,              \
+        .iir_filter                    = BMP390_IIR_FILTER_OFF,                 \
+        .pressure_oversampling         = BMP390_PRESSURE_OVERSAMPLING_8X,       \
+        .temperature_oversampling      = BMP390_TEMPERATURE_OVERSAMPLING_8X,    \
+        .output_data_rate              = BMP390_ODR_40MS,                       \
+        .irq_data_ready_enabled        = true }
 
 /*
  * BMP390 enumerator and structure declarations
@@ -99,7 +100,7 @@ typedef enum bmp390_output_data_rates_e {
     BMP390_ODR_160MS        = (0x05),  //!< sampling period 160ms
     BMP390_ODR_320MS        = (0x06),  //!< sampling period 320ms
     BMP390_ODR_640MS        = (0x07)   //!< sampling period 640ms
-    // TODO: ODR 1.280s to 655.36s
+    // TODO: ODR 1.390s to 655.36s
 } bmp390_output_data_rates_t;
 
 /**
@@ -117,11 +118,11 @@ typedef enum bmp390_power_modes_e {
  */
 typedef enum bmp390_pressure_oversampling_e {
     BMP390_PRESSURE_OVERSAMPLING_SKIPPED        = (0b000),  //!< skipped, no measurement, output set to 0x80000
-    BMP390_PRESSURE_OVERSAMPLING_2X             = (0b001),  //!< ultra low power
-    BMP390_PRESSURE_OVERSAMPLING_4X             = (0b010),  //!< low power
-    BMP390_PRESSURE_OVERSAMPLING_8X             = (0b011),  //!< standard
-    BMP390_PRESSURE_OVERSAMPLING_16X            = (0b100),  //!< high resolution
-    BMP390_PRESSURE_OVERSAMPLING_32X            = (0b101)   //!< ultra high resolution
+    BMP390_PRESSURE_OVERSAMPLING_2X             = (0b001),  //!< low power
+    BMP390_PRESSURE_OVERSAMPLING_4X             = (0b010),  //!< standard
+    BMP390_PRESSURE_OVERSAMPLING_8X             = (0b011),  //!< high resolution
+    BMP390_PRESSURE_OVERSAMPLING_16X            = (0b100),  //!< ultra high resolution
+    BMP390_PRESSURE_OVERSAMPLING_32X            = (0b101)   //!< highest resolution
 } bmp390_pressure_oversampling_t;
 
 /**
@@ -129,11 +130,11 @@ typedef enum bmp390_pressure_oversampling_e {
  */
 typedef enum bmp390_temperature_oversampling_e {
     BMP390_TEMPERATURE_OVERSAMPLING_SKIPPED     = (0b000),  //!< skipped, no measurement, output set to 0x80000
-    BMP390_TEMPERATURE_OVERSAMPLING_2X          = (0b001),  //!< ultra low power
-    BMP390_TEMPERATURE_OVERSAMPLING_4X          = (0b010),  //!< low power
-    BMP390_TEMPERATURE_OVERSAMPLING_8X          = (0b011),  //!< standard
-    BMP390_TEMPERATURE_OVERSAMPLING_16X         = (0b100),  //!< high resolution
-    BMP390_TEMPERATURE_OVERSAMPLING_32X         = (0b101),  //!< ultra high resolution
+    BMP390_TEMPERATURE_OVERSAMPLING_2X          = (0b001),  //!< low power
+    BMP390_TEMPERATURE_OVERSAMPLING_4X          = (0b010),  //!< standard
+    BMP390_TEMPERATURE_OVERSAMPLING_8X          = (0b011),  //!< high resolution
+    BMP390_TEMPERATURE_OVERSAMPLING_16X         = (0b100),  //!< ultra high resolution
+    BMP390_TEMPERATURE_OVERSAMPLING_32X         = (0b101),  //!< highest resolution
 } bmp390_temperature_oversampling_t;
 
 /**
@@ -435,7 +436,7 @@ esp_err_t bmp390_set_configuration_register(bmp390_handle_t handle, const bmp390
  * @param[out] bmp390_handle BMP390 device handle.
  * @return esp_err_t ESP_OK on success.
  */
-esp_err_t bmp390_init(i2c_master_bus_handle_t master_handle, const bmp390_config_t *bmp390_config, bmp390_handle_t *bmp280_handle);
+esp_err_t bmp390_init(i2c_master_bus_handle_t master_handle, const bmp390_config_t *bmp390_config, bmp390_handle_t *bmp390_handle);
 
 /**
  * @brief Reads high-level measurements (temperature & pressure) from BMP390.

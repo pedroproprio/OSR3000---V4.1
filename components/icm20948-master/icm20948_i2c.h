@@ -1,7 +1,11 @@
 #ifndef _ICM_20948_I2C_H_
 #define _ICM_20948_I2C_H_
 
-#include "driver/i2c_master.h"
+#include <string.h>
+#include <driver/i2c_master.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include "icm20948.h"
 
 #define I2C_XFR_TIMEOUT_MS 500
 
